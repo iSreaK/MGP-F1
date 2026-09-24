@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#07100f" />
+    <meta name="description" content="Explorez une reconstitution 3D interactive du circuit Grand Prix de Monza, de la ligne droite aux virages de Lesmo, Ascari et Alboreto." />
+    <title>Monza · Circuit 3D</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307100f'/%3E%3Cpath d='M12 45V19h7l13 15 13-15h7v26h-8V30L32 44 20 30v15Z' fill='%23f1f2e9'/%3E%3Cpath d='M12 51h40' stroke='%23dc4337' stroke-width='4'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="importmap">
+      {"imports":{"three":"../vendor/three/build/three.module.js"}}
+    </script>
+    <script type="module" src="./main.js"></script>
+  </head>
+  <body>
+    <main class="atlas" id="atlas">
+      <canvas id="scene" role="img" aria-label="Reconstitution interactive en 3D du circuit de Monza"></canvas>
+
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">M</span>
+          <div>
+            <p class="eyebrow">AUTODROMO NAZIONALE</p>
+            <h1>MONZA <span>3D</span></h1>
+          </div>
+        </div>
+        <nav aria-label="Pages du site"><a class="return-link" href="../">←&nbsp; La monoplace</a></nav>
+      </header>
+
+      <section class="circuit-data" aria-label="Informations sur le circuit">
+        <p class="data-heading">ITALIE · PARC DE MONZA</p>
+        <div class="data-row"><strong>5,793</strong><span>KM DE PISTE</span></div>
+        <div class="data-row"><strong>11</strong><span>VIRAGES</span></div>
+        <p class="data-note">Tracé Grand Prix · sens horaire</p>
+      </section>
+
+      <div class="loading" id="loading" role="status" aria-live="polite">
+        <div class="loading-card">
+          <span class="loading-line" aria-hidden="true"></span>
+          <p class="loading-kicker">MONZA · CIRCUIT 3D</p>
+          <p id="loading-message">Construction du circuit…</p>
+          <small>Le premier affichage peut prendre quelques instants.</small>
+        </div>
+      </div>
+
+      <footer class="toolbar">
+        <p class="gesture-hint">Glisser pour tourner <span>·</span> Molette ou pincement pour zoomer</p>
+        <div class="actions">
+          <button type="button" id="overview" disabled>Vue générale</button>
+          <button type="button" id="grid" disabled>Départ</button>
+          <button type="button" id="flyover" disabled aria-pressed="false">Survol</button>
+        </div>
+      </footer>
+    </main>
+  </body>
+</html>

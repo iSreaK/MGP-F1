@@ -62,6 +62,18 @@ canvas:active { cursor: grabbing; }
 }
 
 .identity { display: flex; align-items: center; gap: 15px; }
+.masthead-actions { display: flex; align-items: center; gap: 10px; pointer-events: auto; }
+.scene-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 39px; margin-top: 8px; padding: 9px 13px;
+  border: 1px solid rgba(176, 195, 221, .24); border-radius: 100px;
+  background: rgba(15, 26, 42, .67); color: #edf4ef;
+  font-size: 12px; font-weight: 650; text-decoration: none;
+  white-space: nowrap; backdrop-filter: blur(16px);
+  transition: border-color .18s, background .18s;
+}
+.scene-link:hover, .scene-link:focus-visible { border-color: #e79872; background: rgba(42, 49, 65, .88); }
+.scene-link span { color: #ffbd91; }
 
 .identity-mark {
   display: grid;
@@ -237,6 +249,7 @@ h1 span { color: #7e92aa; font-weight: 480; }
   .masthead { align-items: flex-start; }
   .identity-mark { width: 40px; height: 40px; }
   .file-pill { display: none; }
+  .scene-link { margin-top: 2px; padding: 8px 11px; font-size: 11px; }
   .toolbar-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .toolbar-actions a { grid-column: 1 / -1; text-align: center; }
   .toolbar-actions button { width: 100%; }
