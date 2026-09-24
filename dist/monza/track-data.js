@@ -24,43 +24,43 @@ export const LANDMARKS = {
   "turns": {
     "T1": {
       "name": "Variante del Rettifilo – droite",
-      "index": 46
+      "index": 39
     },
     "T2": {
       "name": "Variante del Rettifilo – gauche",
-      "index": 62
+      "index": 44
     },
     "T3": {
       "name": "Curva Grande / Biassono",
-      "index": 82
+      "index": 74
     },
     "T4": {
       "name": "Variante della Roggia – gauche",
-      "index": 107
+      "index": 109
     },
     "T5": {
       "name": "Variante della Roggia – droite",
-      "index": 117
+      "index": 112
     },
     "T6": {
       "name": "Lesmo 1",
-      "index": 133
+      "index": 138
     },
     "T7": {
       "name": "Lesmo 2",
-      "index": 152
+      "index": 153
     },
     "T8": {
       "name": "Variante Ascari – gauche",
-      "index": 203
+      "index": 202
     },
     "T9": {
       "name": "Variante Ascari – droite",
-      "index": 208
+      "index": 210
     },
     "T10": {
       "name": "Variante Ascari – gauche",
-      "index": 215
+      "index": 214
     },
     "T11": {
       "name": "Curva Alboreto / Parabolica",

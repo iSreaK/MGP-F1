@@ -65,6 +65,8 @@ export function createMonzaEnvironment(THREE, options = {}) {
     racingRed: new THREE.MeshStandardMaterial({ color: 0x9e2328, roughness: 0.74 }),
     seatRed: new THREE.MeshStandardMaterial({ color: 0x9d2930, roughness: 0.87 }),
     seatGrey: new THREE.MeshStandardMaterial({ color: 0x656d6d, roughness: 0.87 }),
+    spectatorShirt: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }),
+    spectatorSkin: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }),
     bark: new THREE.MeshStandardMaterial({ color: 0x635d4c, roughness: 1 }),
     foliage: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.98 }),
   };
@@ -395,6 +397,50 @@ export function createMonzaEnvironment(THREE, options = {}) {
     roof.rotation.x = side * -0.055;
     box(stand, 'Grandstand red roof fascia', length + 4.3, 0.6, 0.25,
       0, 9.36, side * -2.76, materials.racingRed);
+    const spectators = [];
+    const spacing = 2.55;
+    for (let row = 0; row < rows; row++) {
+      for (let x = -length / 2 + 2; x < length / 2 - 1; x += spacing) {
+        if (rng() < 0.38) continue;
+        spectators.push({
+          x: x + (rng() - .5) * .42,
+          y: .54 + row * .43,
+          z: side * (row * 1.42 + .72),
+          tint: rng(),
+          skin: rng(),
+        });
+      }
+    }
+    const shirts = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(.35, 5, 4), materials.spectatorShirt, spectators.length,
+    );
+    const heads = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(.19, 5, 4), materials.spectatorSkin, spectators.length,
+    );
+    const dummy = new THREE.Object3D();
+    const shade = new THREE.Color();
+    spectators.forEach((person, i) => {
+      dummy.position.set(person.x, person.y + .84, person.z);
+      dummy.scale.set(.92, 1.13, .86);
+      dummy.updateMatrix();
+      shirts.setMatrixAt(i, dummy.matrix);
+      shade.setHex(person.tint < .38 ? 0xbe252c : person.tint < .63 ? 0xe8e9e1 : person.tint < .85 ? 0x25302e : 0x2e644e);
+      shirts.setColorAt(i, shade);
+      dummy.position.y = person.y + 1.29;
+      dummy.scale.setScalar(1);
+      dummy.updateMatrix();
+      heads.setMatrixAt(i, dummy.matrix);
+      shade.setHex(person.skin < .34 ? 0xd7ae8e : person.skin < .69 ? 0xa98065 : 0x70533e);
+      heads.setColorAt(i, shade);
+    });
+    for (const mesh of [shirts, heads]) {
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.frustumCulled = false;
+      stand.add(mesh);
+    }
+    shirts.name = 'Grandstand spectators';
+    heads.name = 'Grandstand spectator heads';
     statistics.grandstands++;
   }
 
@@ -430,63 +476,88 @@ export function createMonzaEnvironment(THREE, options = {}) {
       if (stands.some((stand) => stand.start && stand.end &&
           pointSegmentDistance(p, pointOf(stand.start), pointOf(stand.end)) < 73)) continue;
       if (traps.some((trap) => distance(p, trap) < Math.max(trap.rx, trap.rz) + 8)) continue;
-      positions.push({ x, z, height: 10.5 + rng() * 10.8, type: rng() < 0.36 ? 'pine' : 'deciduous', hue: rng() });
+      positions.push({ x, z, height: 10.5 + rng() * 10.8, type: rng() < 0.27 ? 'pine' : 'deciduous', hue: rng() });
     }
 
-    const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.45, 0.64, 1, 6), materials.bark, positions.length);
     const deciduous = positions.filter((p) => p.type === 'deciduous');
     const pines = positions.filter((p) => p.type === 'pine');
-    const crowns = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), materials.foliage, deciduous.length);
-    const pineLower = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), materials.foliage, pines.length);
-    const pineUpper = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), materials.foliage, pines.length);
+    const loader = new THREE.TextureLoader();
+    const broadleafMap = loader.load(new URL('./assets/monza_park_broadleaf_tree.png', import.meta.url).href);
+    const pineMap = loader.load(new URL('./assets/monza-trackside-pine-transparent.png', import.meta.url).href);
+    for (const texture of [broadleafMap, pineMap]) {
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = 4;
+    }
+    const broadleafMaterial = new THREE.MeshBasicMaterial({
+      map: broadleafMap, color: 0xffffff, side: THREE.DoubleSide,
+      alphaTest: .24, depthWrite: true,
+    });
+    const pineMaterial = new THREE.MeshBasicMaterial({
+      map: pineMap, color: 0xffffff, side: THREE.DoubleSide,
+      alphaTest: .38, depthWrite: true,
+    });
+    const treePlane = new THREE.PlaneGeometry(1, 1);
     const dummy = new THREE.Object3D();
     const leaf = new THREE.Color();
-    let c = 0, k = 0;
-    for (let i = 0; i < positions.length; i++) {
-      const p = positions[i];
-      const trunkHeight = p.height * (p.type === 'pine' ? 0.47 : 0.52);
-      dummy.position.set(p.x, groundY + trunkHeight / 2, p.z);
-      dummy.rotation.set(0, p.hue * Math.PI * 2, 0);
-      dummy.scale.set(p.type === 'pine' ? 0.51 : 0.64, trunkHeight, p.type === 'pine' ? 0.51 : 0.64);
-      dummy.updateMatrix();
-      trunks.setMatrixAt(i, dummy.matrix);
-      if (p.type === 'deciduous') {
-        const canopy = p.height * 0.44;
-        dummy.position.set(p.x, groundY + p.height * 0.74, p.z);
-        dummy.rotation.set(p.hue * 0.13, p.hue * Math.PI * 2, 0);
-        dummy.scale.set(canopy, canopy * 0.94, canopy * 0.88);
-        dummy.updateMatrix();
-        crowns.setMatrixAt(c, dummy.matrix);
-        leaf.setHSL(0.29 + p.hue * 0.055, 0.39 + p.hue * 0.13, 0.13 + p.hue * 0.08);
-        crowns.setColorAt(c++, leaf);
-      } else {
-        const radius = p.height * 0.28;
-        dummy.rotation.set(0, p.hue * Math.PI * 2, 0);
-        dummy.position.set(p.x, groundY + p.height * 0.64, p.z);
-        dummy.scale.set(radius, p.height * 0.64, radius);
-        dummy.updateMatrix();
-        pineLower.setMatrixAt(k, dummy.matrix);
-        dummy.position.set(p.x, groundY + p.height * 0.82, p.z);
-        dummy.scale.set(radius * 0.65, p.height * 0.45, radius * 0.65);
-        dummy.updateMatrix();
-        pineUpper.setMatrixAt(k, dummy.matrix);
-        leaf.setHSL(0.35 + p.hue * 0.025, 0.31 + p.hue * 0.13, 0.11 + p.hue * 0.08);
-        pineLower.setColorAt(k, leaf);
-        pineUpper.setColorAt(k++, leaf);
+    const addCrossedTrees = (trees, material, kind, sizeFor) => {
+      const bins = new Map();
+      for (const p of trees) {
+        const key = `${Math.floor(p.x / 620)}:${Math.floor(p.z / 620)}`;
+        if (!bins.has(key)) bins.set(key, []);
+        bins.get(key).push(p);
       }
-    }
-    for (const instanced of [trunks, crowns, pineLower, pineUpper]) {
-      instanced.instanceMatrix.needsUpdate = true;
-      if (instanced.instanceColor) instanced.instanceColor.needsUpdate = true;
-      instanced.castShadow = treeShadows;
-      instanced.receiveShadow = false;
-      instanced.frustumCulled = false;
-      group.add(instanced);
-    }
-    trunks.name = 'Instanced tree trunks';
-    crowns.name = 'Instanced deciduous crowns';
-    pineLower.name = 'Instanced pine crowns';
-    pineUpper.name = 'Instanced pine tops';
+      let chunk = 0;
+      for (const batch of bins.values()) {
+        const front = new THREE.InstancedMesh(treePlane, material, batch.length);
+        const cross = new THREE.InstancedMesh(treePlane, material, batch.length);
+        batch.forEach((p, i) => {
+          const [width, height] = sizeFor(p);
+          const yaw = p.hue * Math.PI * 2;
+          dummy.position.set(p.x, groundY + p.height * .50, p.z);
+          dummy.scale.set(width, height, 1);
+          dummy.rotation.set(0, yaw, 0);
+          dummy.updateMatrix();
+          front.setMatrixAt(i, dummy.matrix);
+          dummy.rotation.y = yaw + Math.PI / 2;
+          dummy.updateMatrix();
+          cross.setMatrixAt(i, dummy.matrix);
+          if (kind === 'Broadleaf') leaf.setRGB(.78 + p.hue * .16, .83 + p.hue * .13, .74 + p.hue * .14);
+          else leaf.setRGB(.79 + p.hue * .15, .83 + p.hue * .12, .75 + p.hue * .13);
+          front.setColorAt(i, leaf);
+          cross.setColorAt(i, leaf);
+        });
+        for (const mesh of [front, cross]) {
+          mesh.instanceMatrix.needsUpdate = true;
+          mesh.instanceColor.needsUpdate = true;
+          mesh.computeBoundingSphere();
+          mesh.frustumCulled = true;
+          mesh.name = `${kind} billboards ${chunk}`;
+          group.add(mesh);
+        }
+        chunk++;
+      }
+    };
+    addCrossedTrees(deciduous, broadleafMaterial, 'Broadleaf', p => [p.height * 1.45, p.height * 1.45]);
+    addCrossedTrees(pines, pineMaterial, 'Pine', p => [p.height * .82, p.height * 1.21]);
+    const shadows = new THREE.InstancedMesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({
+        map: contactShadowTexture(THREE), transparent: true, opacity: .31,
+        depthWrite: false, side: THREE.DoubleSide,
+      }),
+      positions.length,
+    );
+    positions.forEach((p, i) => {
+      dummy.position.set(p.x, groundY + .015, p.z);
+      dummy.rotation.set(-Math.PI / 2, 0, 0);
+      dummy.scale.set(p.height * .66, p.height * .38, 1);
+      dummy.updateMatrix();
+      shadows.setMatrixAt(i, dummy.matrix);
+    });
+    shadows.instanceMatrix.needsUpdate = true;
+    shadows.frustumCulled = false;
+    shadows.name = 'Soft tree contact shadows';
+    group.add(shadows);
     statistics.trees = positions.length;
   }
 
@@ -559,7 +630,9 @@ function deriveGravelTraps(samples, trackWidth) {
 
 function defaultStands(straight, samples) {
   if (!straight) return [];
-  const stand = { start: straight.start, end: straight.end, side: -straight.side, rows: 13, length: 132 };
+  // addGrandstand's local side convention is opposite to the pit complex's;
+  // this puts the principal stand across the circuit from the garages.
+  const stand = { start: straight.start, end: straight.end, side: straight.side, rows: 13, length: 145 };
   const far = samples[Math.floor(samples.length * 0.53)];
   const a = { x: far.x - far.tx * 48, z: far.z - far.tz * 48 };
   const b = { x: far.x + far.tx * 48, z: far.z + far.tz * 48 };
@@ -637,6 +710,30 @@ function grassTexture(THREE, rng) {
     const n = (v - 0.5) * 34;
     return [114 + n * 0.72, 148 + n, 94 + n * 0.68];
   });
+}
+
+function contactShadowTexture(THREE) {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const pixels = ctx.createImageData(size, size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = (x + .5 - size / 2) / (size / 2);
+      const dy = (y + .5 - size / 2) / (size / 2);
+      const falloff = Math.max(0, 1 - dx * dx - dy * dy);
+      const i = (y * size + x) * 4;
+      pixels.data[i] = 20;
+      pixels.data[i + 1] = 29;
+      pixels.data[i + 2] = 22;
+      pixels.data[i + 3] = Math.round(falloff * falloff * 185);
+    }
+  }
+  ctx.putImageData(pixels, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 function gravelTexture(THREE, rng) {

@@ -3,9 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#07100f" />
+    <meta name="theme-color" content="#080e12" />
     <meta name="description" content="Explorez une reconstitution 3D interactive du circuit Grand Prix de Monza, de la ligne droite aux virages de Lesmo, Ascari et Alboreto." />
-    <title>Monza · Circuit 3D</title>
+    <title>Monza · Circuit 3D & course</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307100f'/%3E%3Cpath d='M12 45V19h7l13 15 13-15h7v26h-8V30L32 44 20 30v15Z' fill='%23f1f2e9'/%3E%3Cpath d='M12 51h40' stroke='%23dc4337' stroke-width='4'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./styles.css" />
     <script type="importmap">
@@ -20,26 +20,31 @@
       <header class="topbar">
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">M</span>
-          <div>
+          <div class="brand-type">
             <p class="eyebrow">AUTODROMO NAZIONALE</p>
-            <h1>MONZA <span>3D</span></h1>
+            <h1>MONZA <span>/ 3D</span></h1>
           </div>
         </div>
-        <nav aria-label="Pages du site"><a class="return-link" href="../">←&nbsp; La monoplace</a></nav>
+        <nav aria-label="Pages du site"><a class="return-link" href="../" aria-label="Retour à la monoplace"><span aria-hidden="true" class="return-arrow">←</span><span class="return-text">La monoplace</span></a></nav>
       </header>
 
       <section class="circuit-data" aria-label="Informations sur le circuit">
-        <p class="data-heading">ITALIE · PARC DE MONZA</p>
-        <div class="data-row"><strong>5,793</strong><span>KM DE PISTE</span></div>
-        <div class="data-row"><strong>11</strong><span>VIRAGES</span></div>
+        <p class="data-heading"><span class="data-heading-line" aria-hidden="true"></span> ITALIE · PARC DE MONZA</p>
+        <div class="data-stats">
+          <div class="data-row"><strong>5,793</strong><span>KM DE PISTE</span></div>
+          <div class="data-row"><strong>11</strong><span>VIRAGES</span></div>
+        </div>
         <p class="data-note">Tracé Grand Prix · sens horaire</p>
       </section>
 
       <section class="race-hud" id="race-hud" aria-label="Données de course" hidden>
-        <p class="race-label"><span class="race-live" aria-hidden="true"></span> SIMULATION DE COURSE</p>
+        <div class="race-hud-head"><p class="race-label"><span class="race-live" aria-hidden="true"></span> SIMULATION DE COURSE</p><span class="race-hud-code" aria-hidden="true">MONZA / GP</span></div>
+        <p class="race-speed-label">VITESSE INSTANTANÉE</p>
         <div class="race-readout"><strong id="race-speed">0</strong><span>KM/H</span></div>
-        <div class="race-lap"><span id="race-lap">TOUR 1</span><span id="race-distance">0,00 / 5,79 KM</span></div>
+        <div class="race-timing"><div><small>TOUR ACTUEL</small><strong id="race-lap-time">00:00.0</strong></div><div><small>DERNIER TOUR</small><strong id="race-last-lap">—</strong></div></div>
+        <div class="race-lap"><div><small>TOUR</small><span id="race-lap">TOUR 1</span></div><div><small>DISTANCE</small><span id="race-distance">0,00 / 5,79 KM</span></div></div>
         <div class="race-progress" aria-hidden="true"><span id="race-progress"></span></div>
+        <p class="race-section"><span>SECTEUR /</span><strong id="race-section">Rettifilo Tribune</strong></p>
       </section>
 
       <div class="loading" id="loading" role="status" aria-live="polite">
@@ -53,11 +58,16 @@
 
       <footer class="toolbar">
         <p class="gesture-hint">Glisser pour tourner <span>·</span> Molette ou pincement pour zoomer</p>
-        <div class="actions">
-          <button type="button" id="race" class="race-button" disabled aria-pressed="false">▶&nbsp; Course</button>
-          <button type="button" id="overview" disabled>Vue générale</button>
-          <button type="button" id="grid" disabled>Départ</button>
-          <button type="button" id="flyover" disabled aria-pressed="false">Survol</button>
+        <div class="control-panel">
+          <span class="control-label" aria-hidden="true">VUES &amp; SIMULATION <span>01 / MONZA</span></span>
+          <div class="actions">
+            <button type="button" id="race" class="race-button" disabled aria-pressed="false">▶&nbsp; Course</button>
+            <span class="action-divider" aria-hidden="true"></span>
+            <button type="button" id="overview" disabled>Vue générale</button>
+            <button type="button" id="grid" disabled>Départ</button>
+            <button type="button" id="flyover" disabled aria-pressed="false">Survol</button>
+            <button type="button" id="camera-mode" class="camera-button" hidden disabled>Caméra · Poursuite</button>
+          </div>
         </div>
       </footer>
     </main>
