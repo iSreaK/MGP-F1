@@ -14,7 +14,7 @@ const progressFill = document.querySelector('#progress-fill');
 const spinButton = document.querySelector('#spin');
 const resetButton = document.querySelector('#reset');
 
-const modelURL = new URL('./rb22_max_verstappen_2026.glb', import.meta.url);
+const modelURL = new URL('./rb22_max_verstappen_2026.glb?v=20260924-2', import.meta.url);
 
 function fail(message, detail) {
   status.classList.remove('is-hidden');
