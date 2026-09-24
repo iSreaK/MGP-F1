@@ -26,6 +26,7 @@ export function createMonzaEnvironment(THREE, options = {}) {
     margin = 240,
     landmarks = {},
     treeShadows = false,
+    terrainHeightAt = null,
   } = options;
   if (!THREE || !Array.isArray(trackPoints) || trackPoints.length < 3) {
     throw new Error('createMonzaEnvironment requires THREE and at least three trackPoints.');
@@ -42,6 +43,11 @@ export function createMonzaEnvironment(THREE, options = {}) {
   if (path.length < 3) throw new Error('trackPoints must form a loop.');
 
   const rng = mulberry32(seed >>> 0);
+  const heightAt = (x, z) => {
+    if (typeof terrainHeightAt !== 'function') return groundY;
+    const y = terrainHeightAt(x, z);
+    return Number.isFinite(y) ? y : groundY;
+  };
   const group = new THREE.Group();
   group.name = 'Monza environment';
   const samples = sampleClosedPath(path, 5.5);
@@ -65,6 +71,7 @@ export function createMonzaEnvironment(THREE, options = {}) {
     racingRed: new THREE.MeshStandardMaterial({ color: 0x9e2328, roughness: 0.74 }),
     seatRed: new THREE.MeshStandardMaterial({ color: 0x9d2930, roughness: 0.87 }),
     seatGrey: new THREE.MeshStandardMaterial({ color: 0x656d6d, roughness: 0.87 }),
+    seatPlastic: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .78, metalness: .04 }),
     spectatorShirt: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }),
     spectatorSkin: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }),
     bark: new THREE.MeshStandardMaterial({ color: 0x635d4c, roughness: 1 }),
@@ -77,9 +84,11 @@ export function createMonzaEnvironment(THREE, options = {}) {
     ? landmarks.gravelTraps.map(normalizeTrap).filter(Boolean)
     : deriveGravelTraps(samples, trackWidth);
   for (const trap of gravelTraps) addGravelTrap(trap);
-  addCurbs();
+  // The road mesh owns the corner kerbs; duplicating them here created
+  // overlapping strips, especially where the road follows the new relief.
   addGuardrails(straight);
-  if (straight) addPitComplex(straight);
+  // Pit building, grid bridge and lights are now aligned to the road curve by
+  // the dedicated track infrastructure module.
 
   const stands = Array.isArray(landmarks.stands) ? landmarks.stands : defaultStands(straight, samples);
   for (const stand of stands) {
@@ -117,17 +126,22 @@ export function createMonzaEnvironment(THREE, options = {}) {
     // terrain edge in the opening aerial view.
     const width = bbox.maxX - bbox.minX + 4200;
     const depth = bbox.maxZ - bbox.minZ + 4200;
-    const geo = new THREE.PlaneGeometry(width, depth, 48, 48);
+    const geo = new THREE.PlaneGeometry(width, depth, 144, 192);
+    const terrainCenterX = (bbox.minX + bbox.maxX) / 2;
+    const terrainCenterZ = (bbox.minZ + bbox.maxZ) / 2;
     const color = new THREE.Color();
     const colors = [];
     for (let i = 0; i < geo.attributes.position.count; i++) {
       const x = geo.attributes.position.getX(i);
       const y = geo.attributes.position.getY(i);
+      geo.attributes.position.setZ(i, heightAt(x + terrainCenterX, terrainCenterZ - y) - groundY);
       const variation = 0.88 + 0.12 * Math.sin(x * 0.013 + Math.cos(y * 0.008))
         + 0.07 * Math.sin(y * 0.019 - x * 0.006);
       color.setRGB(variation, variation * 0.98, variation * 0.88);
       colors.push(color.r, color.g, color.b);
     }
+    geo.attributes.position.needsUpdate = true;
+    geo.computeVertexNormals();
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     const turf = grassTexture(THREE, rng);
     if (turf) {
@@ -136,7 +150,7 @@ export function createMonzaEnvironment(THREE, options = {}) {
     }
     const mesh = new THREE.Mesh(geo, materials.grass);
     mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set((bbox.minX + bbox.maxX) / 2, groundY - 0.027, (bbox.minZ + bbox.maxZ) / 2);
+    mesh.position.set(terrainCenterX, groundY - 0.027, terrainCenterZ);
     mesh.receiveShadow = true;
     mesh.name = 'Grass terrain';
     group.add(mesh);
@@ -149,7 +163,7 @@ export function createMonzaEnvironment(THREE, options = {}) {
 
   function addGravelTrap(trap) {
     const segments = 72;
-    const vertices = [trap.x, groundY + 0.005, trap.z];
+    const vertices = [trap.x, heightAt(trap.x, trap.z) + 0.008, trap.z];
     const uvs = [0.5, 0.5];
     const indices = [];
     const ca = Math.cos(trap.rotation || 0);
@@ -160,7 +174,9 @@ export function createMonzaEnvironment(THREE, options = {}) {
         + 0.018 * Math.cos(9 * a + trap.z * 0.02);
       const u = Math.cos(a) * trap.rx * waviness;
       const v = Math.sin(a) * trap.rz * waviness;
-      vertices.push(trap.x + u * ca - v * sa, groundY + 0.005, trap.z + u * sa + v * ca);
+      const px = trap.x + u * ca - v * sa;
+      const pz = trap.z + u * sa + v * ca;
+      vertices.push(px, heightAt(px, pz) + 0.008, pz);
       uvs.push(0.5 + Math.cos(a) * 0.5, 0.5 + Math.sin(a) * 0.5);
       if (i < segments) indices.push(0, i + 1, i + 2);
     }
@@ -211,24 +227,28 @@ export function createMonzaEnvironment(THREE, options = {}) {
   function addGuardrails(pit) {
     const railPos = [];
     const postInstances = [];
-    const skipPit = pit ? { a: pit.start, b: pit.end, side: pit.side || 1 } : null;
+    const lapMetres = samples[samples.length - 1].s + distance(samples[samples.length - 1], samples[0]);
+    // The rebuilt pit block occupies about 230 m either side of the finish
+    // line, on the driver's right. Keep the remaining main straight protected.
+    const pitSide = pit ? -(pit.side || 1) : null;
     for (const side of [-1, 1]) {
       for (let i = 0; i < samples.length; i++) {
         const a = samples[i];
         const b = samples[(i + 1) % samples.length];
         const distanceFromCircuit = Math.max(a.curvature, b.curvature) > 0.008 ? 37 : 28;
-        if (skipPit && side === skipPit.side &&
-            pointSegmentDistance(a, skipPit.a, skipPit.b) < 38) continue;
+        if (pitSide === side && (a.s < 235 || a.s > lapMetres - 235)) continue;
         const p0 = offset(a, side * distanceFromCircuit);
         const p1 = offset(b, side * distanceFromCircuit);
+        const base0 = heightAt(p0.x, p0.z);
+        const base1 = heightAt(p1.x, p1.z);
         for (const [low, high] of [[0.47, 0.63], [0.82, 0.99]]) {
           railPos.push(
-            p0.x, groundY + low, p0.z, p1.x, groundY + low, p1.z,
-            p1.x, groundY + high, p1.z, p0.x, groundY + low, p0.z,
-            p1.x, groundY + high, p1.z, p0.x, groundY + high, p0.z,
+            p0.x, base0 + low, p0.z, p1.x, base1 + low, p1.z,
+            p1.x, base1 + high, p1.z, p0.x, base0 + low, p0.z,
+            p1.x, base1 + high, p1.z, p0.x, base0 + high, p0.z,
           );
         }
-        if (i % 2 === 0) postInstances.push(p0);
+        if (i % 2 === 0) postInstances.push({ ...p0, base: base0 });
       }
     }
     if (railPos.length) {
@@ -244,7 +264,7 @@ export function createMonzaEnvironment(THREE, options = {}) {
     );
     const matrix = new THREE.Matrix4();
     postInstances.forEach((p, i) => {
-      matrix.makeTranslation(p.x, groundY + 0.61, p.z);
+      matrix.makeTranslation(p.x, p.base + 0.61, p.z);
       posts.setMatrixAt(i, matrix);
     });
     posts.instanceMatrix.needsUpdate = true;
@@ -360,73 +380,127 @@ export function createMonzaEnvironment(THREE, options = {}) {
   function addGrandstand(desc, original) {
     const d = directionOf(desc.start, desc.end);
     const segmentLength = distance(desc.start, desc.end);
-    const length = Math.max(32, Math.min(Number(original.length) || segmentLength * 0.77, 145));
+    const length = Math.max(32, Math.min(Number(original.length) || segmentLength * 0.77, 165));
     const side = desc.side || 1;
-    const rows = clamp(Math.floor(Number(original.rows) || 12), 6, 17);
+    const rows = clamp(Math.floor(Number(original.rows) || 12), 6, 18);
+    const roofed = original.roof !== false;
     const stand = new THREE.Group();
-    stand.name = 'Covered Monza grandstand';
+    stand.name = `Monza grandstand – ${original.name || 'spectator terrace'}`;
     const mid = midpoint(desc.start, desc.end);
-    stand.position.set(mid.x + -d.z * side * (trackWidth / 2 + 53), groundY, mid.z + d.x * side * (trackWidth / 2 + 53));
+    const setback = clamp(Number(original.setback) || 42, 37, 70);
+    const standX = mid.x - d.z * side * (trackWidth / 2 + setback);
+    const standZ = mid.z + d.x * side * (trackWidth / 2 + setback);
+    stand.position.set(standX, heightAt(standX, standZ), standZ);
     stand.rotation.y = Math.atan2(-d.z, d.x);
     group.add(stand);
 
-    box(stand, 'Grandstand concrete slab', length + 5, 0.42, rows * 1.42 + 2.5,
-      0, 0.22, side * rows * 0.72, materials.concrete);
+    // Terraces rise from a solid earth/concrete berm. Seats and spectators are
+    // instances, so the additional stands cost only a few draw calls each.
+    box(stand, 'Grandstand concrete footprint', length + 3, .38, rows * 1.42 + 3.2,
+      0, .18, side * rows * .71, materials.concrete);
+    const terraces = [];
+    const aisles = [];
+    const aisleXs = length > 116 ? [-length / 3, 0, length / 3] : [-length / 4, length / 4];
+    const seatPlaces = [];
     for (let row = 0; row < rows; row++) {
       const z = side * (row * 1.42 + 0.7);
-      const y = 0.54 + row * 0.43;
-      box(stand, 'Stepped concrete terrace', length + 1, 0.3, 1.39,
-        0, y, z, materials.concrete);
-      box(stand, 'Bench row', length - 1, 0.13, 0.58,
-        0, y + 0.33, z + side * 0.08,
-        row % 4 === 0 ? materials.seatGrey : materials.seatRed);
-      box(stand, 'Seat backs', length - 1, 0.42, 0.1,
-        0, y + 0.6, z + side * 0.33,
-        row % 4 === 0 ? materials.seatGrey : materials.seatRed);
-    }
-    const columns = Math.max(3, Math.ceil(length / 25));
-    for (let i = 0; i <= columns; i++) {
-      const x = -length / 2 + length * i / columns;
-      box(stand, 'Grandstand steel support', 0.17, 9.8, 0.18,
-        x, 4.9, side * (rows * 1.42 - 0.5), materials.darkWall);
-      box(stand, 'Grandstand front support', 0.17, 8.0, 0.18,
-        x, 4.0, side * (-0.7), materials.darkWall);
-    }
-    const roof = box(stand, 'Grandstand floating metal roof', length + 4.3, 0.3, rows * 1.42 + 5.0,
-      0, 9.75, side * (rows * 0.71 - 0.45), materials.roof);
-    roof.rotation.x = side * -0.055;
-    box(stand, 'Grandstand red roof fascia', length + 4.3, 0.6, 0.25,
-      0, 9.36, side * -2.76, materials.racingRed);
-    const spectators = [];
-    const spacing = 2.55;
-    for (let row = 0; row < rows; row++) {
-      for (let x = -length / 2 + 2; x < length / 2 - 1; x += spacing) {
-        if (rng() < 0.38) continue;
-        spectators.push({
-          x: x + (rng() - .5) * .42,
-          y: .54 + row * .43,
-          z: side * (row * 1.42 + .72),
-          tint: rng(),
-          skin: rng(),
-        });
+      const top = .55 + row * .48;
+      terraces.push([length + 1, top, 1.4, 0, top / 2, z]);
+      for (const aisleX of aisleXs) aisles.push([1.5, .035, 1.38,
+        aisleX, top + .018, z]);
+      for (let x = -length / 2 + 1.2; x < length / 2 - .6; x += 1.22) {
+        if (aisleXs.some((aisleX) => Math.abs(x - aisleX) < 1.12)) continue;
+        seatPlaces.push({ x, z, top, row, tint: rng() });
       }
     }
+    instancedBoxes(stand, 'Stepped concrete grandstand', materials.concrete, terraces);
+    instancedBoxes(stand, 'Grandstand access aisles', materials.seatGrey, aisles);
+
+    const seatBase = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(.98, .12, .66), materials.seatPlastic, seatPlaces.length);
+    const seatBack = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(.98, .46, .10), materials.seatPlastic, seatPlaces.length);
+    const dummy = new THREE.Object3D();
+    const shade = new THREE.Color();
+    const spectators = [];
+    seatPlaces.forEach((seat, i) => {
+      dummy.position.set(seat.x, seat.top + .12, seat.z - side * .11);
+      dummy.scale.setScalar(1);
+      dummy.updateMatrix();
+      seatBase.setMatrixAt(i, dummy.matrix);
+      dummy.position.set(seat.x, seat.top + .38, seat.z + side * .27);
+      dummy.updateMatrix();
+      seatBack.setMatrixAt(i, dummy.matrix);
+      const palette = seat.row % 4 === 0 || seat.tint < .11 ? 0x5a6264
+        : seat.tint < .26 ? 0xd5d8d1 : 0xa41f26;
+      shade.setHex(palette);
+      seatBase.setColorAt(i, shade);
+      seatBack.setColorAt(i, shade);
+      if (rng() < (original.occupancy ?? .40)) spectators.push({
+        x: seat.x + (rng() - .5) * .22,
+        y: seat.top,
+        z: seat.z,
+        tint: rng(), skin: rng(),
+      });
+    });
+    for (const mesh of [seatBase, seatBack]) {
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.computeBoundingSphere();
+      mesh.frustumCulled = true;
+      stand.add(mesh);
+    }
+
+    const rear = rows * 1.42 + .6;
+    box(stand, 'Spectator access concourse', length + 8, .12, 6.8,
+      0, .07, side * (rear + 5), materials.asphalt);
+    const railItems = [];
+    const railCount = Math.max(3, Math.ceil(length / 8));
+    for (let i = 0; i <= railCount; i++) {
+      const x = -length / 2 + length * i / railCount;
+      railItems.push([.10, 1.7, .10, x, .85, side * -1.4]);
+      railItems.push([.10, 1.4, .10, x, .7 + (rows - 1) * .48, side * (rear + .3)]);
+    }
+    instancedBoxes(stand, 'Grandstand safety railing posts', materials.railPost, railItems);
+    box(stand, 'Grandstand front safety rail', length + 1.6, .09, .09,
+      0, 1.65, side * -1.4, materials.rail);
+    if (roofed) {
+      const frontY = 5.6;
+      const rearY = .55 + (rows - 1) * .48 + 3.5;
+      const roofDepth = rear + 4.6;
+      const roofCenterZ = side * (rear / 2 - .3);
+      const roof = box(stand, 'Grandstand pitched roof', length + 4.6, .36, roofDepth,
+        0, (frontY + rearY) / 2, roofCenterZ, materials.roof);
+      roof.rotation.x = -side * Math.atan2(rearY - frontY, rear + 3.4);
+      box(stand, 'Grandstand red roof fascia', length + 4.6, .54, .23,
+        0, frontY - .08, side * -2.5, materials.racingRed);
+      const supports = [];
+      const columns = Math.max(3, Math.ceil(length / 27));
+      for (let i = 0; i <= columns; i++) {
+        const x = -length / 2 + length * i / columns;
+        supports.push([.19, frontY, .19, x, frontY / 2, side * -1.9]);
+        supports.push([.19, rearY, .19, x, rearY / 2, side * (rear + 1.3)]);
+      }
+      instancedBoxes(stand, 'Grandstand roof columns', materials.darkWall, supports);
+    } else {
+      box(stand, 'Open grandstand rear parapet', length + 2, 1.35, .4,
+        0, .68 + (rows - 1) * .48, side * (rear + .45), materials.concrete);
+    }
+
     const shirts = new THREE.InstancedMesh(
       new THREE.SphereGeometry(.35, 5, 4), materials.spectatorShirt, spectators.length,
     );
     const heads = new THREE.InstancedMesh(
       new THREE.SphereGeometry(.19, 5, 4), materials.spectatorSkin, spectators.length,
     );
-    const dummy = new THREE.Object3D();
-    const shade = new THREE.Color();
     spectators.forEach((person, i) => {
-      dummy.position.set(person.x, person.y + .84, person.z);
+      dummy.position.set(person.x, person.y + .70, person.z);
       dummy.scale.set(.92, 1.13, .86);
       dummy.updateMatrix();
       shirts.setMatrixAt(i, dummy.matrix);
       shade.setHex(person.tint < .38 ? 0xbe252c : person.tint < .63 ? 0xe8e9e1 : person.tint < .85 ? 0x25302e : 0x2e644e);
       shirts.setColorAt(i, shade);
-      dummy.position.y = person.y + 1.29;
+      dummy.position.y = person.y + 1.18;
       dummy.scale.setScalar(1);
       dummy.updateMatrix();
       heads.setMatrixAt(i, dummy.matrix);
@@ -436,7 +510,8 @@ export function createMonzaEnvironment(THREE, options = {}) {
     for (const mesh of [shirts, heads]) {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      mesh.frustumCulled = false;
+      mesh.computeBoundingSphere();
+      mesh.frustumCulled = true;
       stand.add(mesh);
     }
     shirts.name = 'Grandstand spectators';
@@ -448,6 +523,9 @@ export function createMonzaEnvironment(THREE, options = {}) {
     const positions = [];
     const terrainWidth = bbox.maxX - bbox.minX;
     const terrainDepth = bbox.maxZ - bbox.minZ;
+    const lapMetres = samples[samples.length - 1].s + distance(samples[samples.length - 1], samples[0]);
+    const pitStart = samples[Math.round((lapMetres - 245) / lapMetres * samples.length) % samples.length];
+    const pitEnd = samples[Math.round(245 / lapMetres * samples.length) % samples.length];
     const nearestDistance = (p) => {
       let best = Infinity;
       for (let i = 0; i < path.length; i++) {
@@ -472,11 +550,12 @@ export function createMonzaEnvironment(THREE, options = {}) {
       if (x < bbox.minX + 5 || x > bbox.maxX - 5 || z < bbox.minZ + 5 || z > bbox.maxZ - 5) continue;
       const p = { x, z };
       if (nearestDistance(p) < 31) continue;
-      if (pit && pointSegmentDistance(p, pit.start, pit.end) < 72) continue;
+      if (pit && pointSegmentDistance(p, pitStart, pitEnd) < 60) continue;
       if (stands.some((stand) => stand.start && stand.end &&
-          pointSegmentDistance(p, pointOf(stand.start), pointOf(stand.end)) < 73)) continue;
+          pointSegmentDistance(p, pointOf(stand.start), pointOf(stand.end)) < 85)) continue;
       if (traps.some((trap) => distance(p, trap) < Math.max(trap.rx, trap.rz) + 8)) continue;
-      positions.push({ x, z, height: 10.5 + rng() * 10.8, type: rng() < 0.27 ? 'pine' : 'deciduous', hue: rng() });
+      positions.push({ x, z, ground: heightAt(x, z), height: 10.5 + rng() * 10.8,
+        type: rng() < 0.27 ? 'pine' : 'deciduous', hue: rng() });
     }
 
     const deciduous = positions.filter((p) => p.type === 'deciduous');
@@ -513,7 +592,7 @@ export function createMonzaEnvironment(THREE, options = {}) {
         batch.forEach((p, i) => {
           const [width, height] = sizeFor(p);
           const yaw = p.hue * Math.PI * 2;
-          dummy.position.set(p.x, groundY + p.height * .50, p.z);
+          dummy.position.set(p.x, p.ground + p.height * .50, p.z);
           dummy.scale.set(width, height, 1);
           dummy.rotation.set(0, yaw, 0);
           dummy.updateMatrix();
@@ -548,7 +627,7 @@ export function createMonzaEnvironment(THREE, options = {}) {
       positions.length,
     );
     positions.forEach((p, i) => {
-      dummy.position.set(p.x, groundY + .015, p.z);
+      dummy.position.set(p.x, p.ground + .015, p.z);
       dummy.rotation.set(-Math.PI / 2, 0, 0);
       dummy.scale.set(p.height * .66, p.height * .38, 1);
       dummy.updateMatrix();
@@ -584,7 +663,8 @@ export function createMonzaEnvironment(THREE, options = {}) {
     instances.instanceMatrix.needsUpdate = true;
     instances.name = name;
     instances.receiveShadow = true;
-    instances.frustumCulled = false;
+    instances.computeBoundingSphere();
+    instances.frustumCulled = true;
     parent.add(instances);
     return instances;
   }
@@ -629,14 +709,42 @@ function deriveGravelTraps(samples, trackWidth) {
 }
 
 function defaultStands(straight, samples) {
-  if (!straight) return [];
-  // addGrandstand's local side convention is opposite to the pit complex's;
-  // this puts the principal stand across the circuit from the garages.
-  const stand = { start: straight.start, end: straight.end, side: straight.side, rows: 13, length: 145 };
-  const far = samples[Math.floor(samples.length * 0.53)];
-  const a = { x: far.x - far.tx * 48, z: far.z - far.tz * 48 };
-  const b = { x: far.x + far.tx * 48, z: far.z + far.tz * 48 };
-  return [stand, { start: a, end: b, side: -1, rows: 9, length: 75 }];
+  if (!samples.length) return [];
+  // Metres measured clockwise from the start/finish line. Monza concentrates
+  // grandstands around Rettifilo, Roggia, Ascari and Alboreto; the long park
+  // straights remain visibly wooded. Positive side is left of travel, away
+  // from the garages on the main straight.
+  const layout = [
+    [135, 125, 14, 1, 'Rettifilo A', true],
+    [295, 134, 16, 1, 'Rettifilo B', true],
+    [470, 136, 15, 1, 'Rettifilo C', true],
+    [650, 122, 14, 1, 'Rettifilo D', true],
+    [790, 92, 11, 1, 'Prima variante ingresso', false],
+    [1040, 98, 10, -1, 'Prima variante uscita', false],
+    [1350, 112, 11, 1, 'Curva Grande', false],
+    [1640, 100, 11, 1, 'Biassono', false],
+    [1950, 118, 12, 1, 'Roggia ingresso', true],
+    [2200, 82, 10, -1, 'Roggia uscita', false],
+    [2440, 92, 10, 1, 'Lesmo 1', false],
+    [2740, 92, 10, 1, 'Lesmo 2', false],
+    [3780, 108, 12, -1, 'Ascari ingresso', true],
+    [4050, 104, 11, -1, 'Ascari uscita', false],
+    [5090, 115, 14, 1, 'Alboreto ingresso', true],
+    [5290, 120, 15, 1, 'Alboreto uscita', true],
+    [5540, 112, 12, 1, 'Rettifilo finale', true],
+  ];
+  const total = samples[samples.length - 1].s + distance(samples[samples.length - 1], samples[0]);
+  return layout.map(([metres, length, rows, side, name, roof]) => {
+    const sample = samples[Math.round(metres / total * samples.length) % samples.length];
+    const half = length / 2;
+    return {
+      start: { x: sample.x - sample.tx * half, z: sample.z - sample.tz * half },
+      end: { x: sample.x + sample.tx * half, z: sample.z + sample.tz * half },
+      side, rows, length, name, roof,
+      setback: roof ? 43 : 46,
+      occupancy: roof ? .43 : .34,
+    };
+  });
 }
 
 function findLongestStraight(samples) {

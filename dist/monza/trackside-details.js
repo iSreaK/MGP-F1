@@ -2,7 +2,7 @@
  * Small trackside elements, kept separate from the terrain and circuit mesh.
  * Distances are metres; the centreline uses arc-length-normalised curve values.
  */
-export function addTracksideDetails(THREE, scene, curve, polyline, landmarks, trackY = .30) {
+export function addTracksideDetails(THREE, scene, curve, polyline, landmarks, trackY = .30, terrainHeightAt = () => 0) {
   const group = new THREE.Group();
   group.name = 'Monza trackside details';
   scene.add(group);
@@ -58,7 +58,7 @@ export function addTracksideDetails(THREE, scene, curve, polyline, landmarks, tr
           [b, wheelLine + swayB, -.11], [b, wheelLine + swayB, .11],
         ]) {
           const p = sample.point.clone().addScaledVector(sample.across, center + width);
-          rubberPositions.push(p.x, trackY + .042, p.z);
+          rubberPositions.push(p.x, sample.point.y + .042, p.z);
         }
         rubberIndices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
       }
@@ -92,7 +92,7 @@ export function addTracksideDetails(THREE, scene, curve, polyline, landmarks, tr
     for (const metres of distances) {
       const frame = pointAt(apex - metres / length);
       const position = frame.point.clone().addScaledVector(frame.across, side * 15.9);
-      position.y = 0;
+      position.y = terrainHeightAt(position.x, position.z);
       const boardGroup = new THREE.Group();
       boardGroup.position.copy(position);
       const boardBasis = new THREE.Matrix4().makeBasis(frame.across.clone().negate(), up, frame.forward.clone().negate());
@@ -119,7 +119,7 @@ export function addTracksideDetails(THREE, scene, curve, polyline, landmarks, tr
   const portal = new THREE.Group();
   portal.name = 'Monza circuit bridge';
   portal.position.copy(portalAt.point);
-  portal.position.y = 0;
+  portal.position.y = terrainHeightAt(portal.position.x, portal.position.z);
   portal.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(portalAt.across, up, portalAt.forward));
   group.add(portal);
   const beam = new THREE.Mesh(new THREE.BoxGeometry(24.7, 2.35, 1.2), dark);
@@ -154,7 +154,8 @@ export function addTracksideDetails(THREE, scene, curve, polyline, landmarks, tr
     for (let i = 0; i < stacks; i++) {
       const frame = pointAt(apex + ((i - (stacks - 1) / 2) * 1.28) / length);
       const center = frame.point.clone().addScaledVector(frame.across, side * 24.1);
-      for (let tier = 0; tier < 4; tier++) tyreLayout.push([center.x, .25 + tier * .31, center.z, i, tier]);
+      const ground = terrainHeightAt(center.x, center.z);
+      for (let tier = 0; tier < 4; tier++) tyreLayout.push([center.x, ground + .25 + tier * .31, center.z, i, tier]);
     }
   }
   const tyres = new THREE.InstancedMesh(
@@ -195,14 +196,15 @@ export function addTracksideDetails(THREE, scene, curve, polyline, landmarks, tr
       const offsetMetres = startMetres + (endMetres - startMetres) * i / count;
       const frame = pointAt(apex + offsetMetres / length);
       const p = frame.point.clone().addScaledVector(frame.across, side * 31.3);
-      if (i % 2 === 0) fencePosts.push([p.x, p.z]);
-      fenceLines.push(p.x, .34, p.z, p.x, 4.15, p.z);
+      const ground = terrainHeightAt(p.x, p.z);
+      if (i % 2 === 0) fencePosts.push([p.x, ground, p.z]);
+      fenceLines.push(p.x, ground + .34, p.z, p.x, ground + 4.15, p.z);
       if (previous) {
-        for (const y of [.38, 1.15, 1.92, 2.69, 3.46, 4.13]) {
-          fenceLines.push(previous.x, y, previous.z, p.x, y, p.z);
+        for (const offsetY of [.38, 1.15, 1.92, 2.69, 3.46, 4.13]) {
+          fenceLines.push(previous.x, previous.y + offsetY, previous.z, p.x, ground + offsetY, p.z);
         }
       }
-      previous = p;
+      previous = { x: p.x, y: ground, z: p.z };
     }
   }
   const wiresGeometry = new THREE.BufferGeometry();
@@ -216,7 +218,7 @@ export function addTracksideDetails(THREE, scene, curve, polyline, landmarks, tr
     new THREE.BoxGeometry(.12, 4.28, .12), paintedSteel, fencePosts.length,
   );
   for (let i = 0; i < fencePosts.length; i++) {
-    local.position.set(fencePosts[i][0], 2.14, fencePosts[i][1]);
+    local.position.set(fencePosts[i][0], fencePosts[i][1] + 2.14, fencePosts[i][2]);
     local.rotation.set(0, 0, 0);
     local.scale.setScalar(1);
     local.updateMatrix();
@@ -242,8 +244,8 @@ export function addTracksideDetails(THREE, scene, curve, polyline, landmarks, tr
       const frame = pointAt(apex + offsetMetres / length);
       const board = new THREE.Mesh(panelGeometry, panelMaterials[panelIndex++ % panelMaterials.length]);
       board.position.copy(frame.point).addScaledVector(frame.across, side * 27.5);
-      board.position.y = 1.8;
-      board.lookAt(frame.point.x, 1.8, frame.point.z);
+      board.position.y = terrainHeightAt(board.position.x, board.position.z) + 1.8;
+      board.lookAt(frame.point.x, board.position.y, frame.point.z);
       board.name = 'Trackside Monza panel';
       group.add(board);
     }
@@ -254,7 +256,7 @@ export function addTracksideDetails(THREE, scene, curve, polyline, landmarks, tr
   const tower = new THREE.Group();
   tower.name = 'Start straight timing tower';
   tower.position.copy(grid.point).addScaledVector(grid.across, 67);
-  tower.position.y = 0;
+  tower.position.y = terrainHeightAt(tower.position.x, tower.position.z);
   tower.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(grid.across, up, grid.forward));
   group.add(tower);
   const shaft = new THREE.Mesh(new THREE.BoxGeometry(7.2, 26, 4.2), dark);

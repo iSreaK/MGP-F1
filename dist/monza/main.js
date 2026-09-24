@@ -53,7 +53,7 @@ if (renderer) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x9cbdd0);
-  scene.fog = new THREE.Fog(0xa9c0c1, 2600, 5900);
+  scene.fog = new THREE.Fog(0xa9c0c1, 3600, 7600);
 
   const camera = new THREE.PerspectiveCamera(41, 1, 0.5, 6500);
   const controls = new OrbitControls(camera, canvas);
@@ -214,7 +214,7 @@ if (renderer) {
     const center = world.bounds.getCenter(new THREE.Vector3());
     const size = world.bounds.getSize(new THREE.Vector3());
     const span = Math.max(size.x, size.z);
-    initialTarget.set(center.x, 0, center.z);
+    initialTarget.set(center.x, center.y, center.z);
     if (camera.aspect < .8) {
       initialPosition.set(center.x + span * .04, span * 2.10, center.z + span * .08);
     } else {
@@ -233,7 +233,7 @@ if (renderer) {
     const carSide = new THREE.Vector3(carDirection.z, 0, -carDirection.x);
     new GLTFLoader().load('../rb22_max_verstappen_2026.glb', ({ scene: car }) => {
       car.position.copy(carPoint).addScaledVector(carSide, -2.35);
-      car.position.y = .34;
+      car.position.y = carPoint.y + .04;
       car.rotation.y = Math.atan2(carDirection.z, -carDirection.x);
       car.traverse(object => {
         if (object.isMesh) object.castShadow = true;
@@ -252,9 +252,9 @@ if (renderer) {
       if (!introPlayed) {
         introPlayed = true;
         const heroPosition = carPoint.clone().addScaledVector(carDirection, -27).addScaledVector(carSide, -8);
-        heroPosition.y = 8;
+        heroPosition.y = carPoint.y + 8;
         const heroTarget = carPoint.clone().addScaledVector(carDirection, 12);
-        heroTarget.y = 1.5;
+        heroTarget.y = carPoint.y + 1.5;
         if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
           camera.position.copy(heroPosition);
           controls.target.copy(heroTarget);
@@ -288,9 +288,9 @@ if (renderer) {
     const dir = world.gridTangent.clone().normalize();
     const side = new THREE.Vector3(dir.z, 0, -dir.x);
     const position = at.clone().addScaledVector(dir, -50).addScaledVector(side, -9);
-    position.y = 11;
+    position.y = at.y + 11;
     const target = at.clone().addScaledVector(dir, -8).addScaledVector(side, -2);
-    target.y = 2;
+    target.y = at.y + 2;
     moveCamera(position, target, 1100);
   });
 
@@ -339,21 +339,21 @@ if (renderer) {
       if (cameraMode === 1) {
         // A lateral broadcast shot keeps the car and the next apex in frame.
         desiredPosition.addScaledVector(forward, -5).addScaledVector(side, narrowView ? 14 : 19);
-        desiredPosition.y = narrowView ? 7 : 6.4;
+        desiredPosition.y += narrowView ? 6.66 : 6.06;
         desiredTarget.addScaledVector(forward, 5);
-        desiredTarget.y = 1.35;
+        desiredTarget.y += 1.01;
         desiredFov = narrowView ? 52 : 42;
       } else if (cameraMode === 2) {
         desiredPosition.addScaledVector(forward, narrowView ? -38 : -43).addScaledVector(side, narrowView ? 12 : 19);
-        desiredPosition.y = narrowView ? 72 : 66;
+        desiredPosition.y += narrowView ? 71.66 : 65.66;
         desiredTarget.addScaledVector(forward, 24);
-        desiredTarget.y = 1;
+        desiredTarget.y += .66;
         desiredFov = narrowView ? 53 : 46;
       } else {
         desiredPosition.addScaledVector(forward, narrowView ? -12.5 : -7.8).addScaledVector(side, narrowView ? .65 : 2.4);
-        desiredPosition.y = narrowView ? 3.9 : 2.95;
+        desiredPosition.y += narrowView ? 3.56 : 2.61;
         desiredTarget.addScaledVector(forward, narrowView ? 12 : 17);
-        desiredTarget.y = 1.05;
+        desiredTarget.y += .71;
         desiredFov = (narrowView ? 46 : 41) + Math.min(narrowView ? 4 : 6, stats.speedKmh / 325 * (narrowView ? 4 : 6));
       }
       // Follow translation quickly enough that a 325 km/h car does not drift
@@ -374,9 +374,9 @@ if (renderer) {
       const ahead = world.curve.getPointAt((lapProgress + .008) % 1);
       const dir = ahead.clone().sub(at).normalize();
       camera.position.copy(at).addScaledVector(dir, -48);
-      camera.position.y = 31;
+      camera.position.y = at.y + 31;
       controls.target.copy(ahead);
-      controls.target.y = 4;
+      controls.target.y = ahead.y + 4;
       camera.lookAt(controls.target);
     } else if (cameraMove) {
       const t = Math.min(1, (now - cameraMove.start) / cameraMove.duration);

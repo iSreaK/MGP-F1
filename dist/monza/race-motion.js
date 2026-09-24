@@ -207,7 +207,7 @@ export function createRaceController(THREE, curve, car, options = {}) {
     const gridBlend = 1 - smoothstep(clamp(stats.distanceMeters / 120, 0, 1));
     const offset = raceOffset + (laneOffset - raceOffset) * gridBlend;
     pointOnLine(stats.progress, car.position, offset);
-    car.position.y = carY;
+    car.position.y += carY - .30;
     directionOnLine(stats.progress, tangent);
     car.rotation.y = Math.atan2(tangent.z, -tangent.x);
     stats.sectionName = sectionAt(stats.progress);
