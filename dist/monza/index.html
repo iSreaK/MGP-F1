@@ -35,6 +35,13 @@
         <p class="data-note">Tracé Grand Prix · sens horaire</p>
       </section>
 
+      <section class="race-hud" id="race-hud" aria-label="Données de course" hidden>
+        <p class="race-label"><span class="race-live" aria-hidden="true"></span> SIMULATION DE COURSE</p>
+        <div class="race-readout"><strong id="race-speed">0</strong><span>KM/H</span></div>
+        <div class="race-lap"><span id="race-lap">TOUR 1</span><span id="race-distance">0,00 / 5,79 KM</span></div>
+        <div class="race-progress" aria-hidden="true"><span id="race-progress"></span></div>
+      </section>
+
       <div class="loading" id="loading" role="status" aria-live="polite">
         <div class="loading-card">
           <span class="loading-line" aria-hidden="true"></span>
@@ -47,6 +54,7 @@
       <footer class="toolbar">
         <p class="gesture-hint">Glisser pour tourner <span>·</span> Molette ou pincement pour zoomer</p>
         <div class="actions">
+          <button type="button" id="race" class="race-button" disabled aria-pressed="false">▶&nbsp; Course</button>
           <button type="button" id="overview" disabled>Vue générale</button>
           <button type="button" id="grid" disabled>Départ</button>
           <button type="button" id="flyover" disabled aria-pressed="false">Survol</button>

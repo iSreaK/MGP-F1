@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from '../vendor/three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from '../vendor/three/examples/jsm/loaders/GLTFLoader.js';
 import { createMonzaWorld } from './world.js';
+import { createRaceController } from './race-motion.js';
+import { bindWheelSpin } from './wheel-spin.js';
 
 const canvas = document.querySelector('#scene');
 const atlas = document.querySelector('#atlas');
@@ -10,6 +12,15 @@ const loadingMessage = document.querySelector('#loading-message');
 const overviewButton = document.querySelector('#overview');
 const gridButton = document.querySelector('#grid');
 const flyoverButton = document.querySelector('#flyover');
+const raceButton = document.querySelector('#race');
+const raceHud = document.querySelector('#race-hud');
+const raceLabel = raceHud.querySelector('.race-label');
+const raceSpeed = document.querySelector('#race-speed');
+const raceLap = document.querySelector('#race-lap');
+const raceDistance = document.querySelector('#race-distance');
+const raceProgress = document.querySelector('#race-progress');
+const gestureHint = document.querySelector('.gesture-hint');
+const exploreHint = gestureHint.innerHTML;
 
 let renderer;
 try {
@@ -75,8 +86,69 @@ if (renderer) {
   let initialTarget = new THREE.Vector3();
   let cameraMove = null;
   let flying = false;
+  let racing = false;
+  let raceStarted = false;
+  let raceController = null;
+  let wheelAnimator = null;
+  let lastRaceDistance = 0;
   let lapProgress = 0;
   let lastTime = performance.now();
+
+  function updateRaceHud() {
+    if (!raceController) return;
+    const stats = raceController.stats;
+    const lapDistance = stats.distanceMeters % stats.trackLengthMeters;
+    raceSpeed.textContent = Math.round(stats.speedKmh).toString();
+    raceLap.textContent = `TOUR ${stats.lap + 1}`;
+    raceDistance.textContent = `${(lapDistance / 1000).toFixed(2).replace('.', ',')} / 5,79 KM`;
+    raceProgress.style.width = `${Math.min(100, lapDistance / stats.trackLengthMeters * 100)}%`;
+  }
+
+  function pauseRace() {
+    if (!racing || !raceController) return;
+    racing = false;
+    raceController.stop();
+    controls.enabled = true;
+    raceButton.textContent = '▶  Reprendre';
+    raceButton.setAttribute('aria-pressed', 'false');
+    raceLabel.textContent = 'COURSE EN PAUSE';
+    gestureHint.innerHTML = exploreHint;
+  }
+
+  function exitRace() {
+    if (!raceController || !raceStarted) return;
+    raceController.reset();
+    racing = false;
+    raceStarted = false;
+    lastRaceDistance = 0;
+    controls.enabled = true;
+    raceHud.hidden = true;
+    raceButton.textContent = '▶  Course';
+    raceButton.setAttribute('aria-pressed', 'false');
+    raceLabel.innerHTML = '<span class="race-live" aria-hidden="true"></span> SIMULATION DE COURSE';
+    gestureHint.innerHTML = exploreHint;
+  }
+
+  function startRace() {
+    if (!raceController || !world) return;
+    stopFlyover();
+    if (!raceStarted) {
+      raceController.reset();
+      lastRaceDistance = 0;
+      raceStarted = true;
+    }
+    raceController.start();
+    racing = true;
+    cameraMove = null;
+    controls.enabled = false;
+    raceButton.textContent = 'Ⅱ  Pause';
+    raceButton.setAttribute('aria-pressed', 'true');
+    raceLabel.innerHTML = '<span class="race-live" aria-hidden="true"></span> SIMULATION DE COURSE';
+    raceHud.hidden = false;
+    gestureHint.textContent = 'Caméra de poursuite · Pause pour explorer';
+    updateRaceHud();
+    lastTime = performance.now();
+  }
 
   function moveCamera(position, target, duration = 950) {
     cameraMove = {
@@ -125,6 +197,15 @@ if (renderer) {
         if (object.isMesh) object.castShadow = true;
       });
       scene.add(car);
+      raceController = createRaceController(THREE, world.curve, car, {
+        startU: carU,
+        laneOffset: -2.35,
+        carY: .34,
+      });
+      const wheels = bindWheelSpin(THREE, car);
+      if (wheels.enabled) wheelAnimator = wheels;
+      else wheels.dispose();
+      raceButton.disabled = false;
     }, undefined, error => console.warn('La monoplace de démonstration est indisponible.', error));
 
     overviewButton.disabled = false;
@@ -137,11 +218,13 @@ if (renderer) {
   }
 
   overviewButton.addEventListener('click', () => {
+    exitRace();
     stopFlyover();
     if (world) moveCamera(initialPosition, initialTarget);
   });
 
   gridButton.addEventListener('click', () => {
+    exitRace();
     stopFlyover();
     if (!world) return;
     const at = world.gridPoint.clone();
@@ -156,6 +239,7 @@ if (renderer) {
 
   flyoverButton.addEventListener('click', () => {
     if (!world) return;
+    exitRace();
     if (flying) { stopFlyover(); return; }
     flying = true;
     cameraMove = null;
@@ -164,14 +248,33 @@ if (renderer) {
     flyoverButton.setAttribute('aria-pressed', 'true');
     lastTime = performance.now();
   });
-  canvas.addEventListener('pointerdown', stopFlyover);
+  raceButton.addEventListener('click', () => {
+    if (racing) pauseRace();
+    else startRace();
+  });
+  canvas.addEventListener('pointerdown', () => { pauseRace(); stopFlyover(); });
 
   function animate(now) {
     requestAnimationFrame(animate);
     const dt = Math.min(.05, Math.max(0, (now - lastTime) / 1000));
     lastTime = now;
 
-    if (flying && world) {
+    if (racing && world && raceController) {
+      const stats = raceController.update(dt);
+      if (wheelAnimator) wheelAnimator.update(stats.distanceMeters - lastRaceDistance);
+      lastRaceDistance = stats.distanceMeters;
+      const forward = stats.tangent;
+      const side = new THREE.Vector3(forward.z, 0, -forward.x);
+      const desiredPosition = stats.position.clone().addScaledVector(forward, -13).addScaledVector(side, 3.3);
+      desiredPosition.y = 4.6;
+      const desiredTarget = stats.position.clone().addScaledVector(forward, 22);
+      desiredTarget.y = 1.4;
+      const smoothing = 1 - Math.exp(-dt * 3.5);
+      camera.position.lerp(desiredPosition, smoothing);
+      controls.target.lerp(desiredTarget, smoothing);
+      camera.lookAt(controls.target);
+      updateRaceHud();
+    } else if (flying && world) {
       lapProgress = (lapProgress + dt / 80) % 1;
       const at = world.curve.getPointAt(lapProgress);
       const ahead = world.curve.getPointAt((lapProgress + .008) % 1);
