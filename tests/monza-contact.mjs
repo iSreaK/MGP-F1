@@ -8,10 +8,14 @@ import { trackElevationAt } from '../dist/monza/terrain-profile.js';
 import { createRaceController } from '../dist/monza/race-motion.js';
 import { WHEEL_GEOMETRY } from '../dist/monza/wheel-spin.js';
 import { createTrackHeightSampler } from '../dist/monza/world.js';
+import { createTrackGapLookup } from '../dist/monza/track-gap.js';
+import { GRID_LANE_CENTER } from '../dist/monza/grid-details.js';
 
 const SAMPLE_COUNT = 1500;
 const TRACK_Y = .30;
 const TOLERANCE_METERS = .005;
+const laneOffset = Number(process.argv[2] ?? -GRID_LANE_CENTER);
+assert.ok(Math.abs(laneOffset) === GRID_LANE_CENTER, 'Use a marked grid lane offset');
 
 // Reproduce the asphalt ribbon's centreline sampling and triangle positions.
 // This stands alone from the placement code under test and exposes the actual
@@ -73,11 +77,11 @@ for (let i = 0; i < controlPoints.length; i++) {
   total += segment;
 }
 const gridU = total ? travelled / total : 0;
-const carU = (gridU - .0025 + 1) % 1;
+const carU = createTrackGapLookup(curve).behind(gridU, 14.1);
 const car = new THREE.Group();
 const controller = createRaceController(THREE, curve, car, {
   startU: carU,
-  laneOffset: -2.35,
+  laneOffset,
   trackHeightAt,
 });
 const wheels = [
@@ -131,7 +135,7 @@ const floating = [...cases].sort((a, b) => b.gap - a.gap)[0];
 const buried = [...cases].sort((a, b) => a.gap - b.gap)[0];
 const meanAbsolute = cases.reduce((sum, c) => sum + Math.abs(c.gap), 0) / cases.length;
 const describe = item => `${item.wheel} @ u=${item.u.toFixed(4)} (${item.label})`;
-console.log(`Checked ${cases.length} tyre contacts against ${SAMPLE_COUNT * 2} asphalt triangles.`);
+console.log(`Checked ${cases.length} tyre contacts in lane ${laneOffset > 0 ? 'right' : 'left'} against ${SAMPLE_COUNT * 2} asphalt triangles.`);
 console.log(`Continuous race: ${frames} frames, ${(frames / 10).toFixed(1)} simulated seconds, one full lap.`);
 console.log(`Maximum hover: ${(floating.gap * 1000).toFixed(2)} mm, ${describe(floating)}`);
 console.log(`Maximum penetration: ${(-buried.gap * 1000).toFixed(2)} mm, ${describe(buried)}`);

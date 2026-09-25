@@ -1,14 +1,19 @@
+import { createTrackGapLookup } from './track-gap.js';
+
 /**
  * The start/finish complex is built from the actual centreline, rather than a
  * chord between two distant points on the curved main straight.  All offsets
  * below are local metres: +X is the pit side, +Z is the direction of travel.
  */
+export const GRID_SLOT_SPACING = 9.05;
+export const GRID_LANE_CENTER = 2.72;
+
 export function addMonzaGridDetails(THREE, scene, curve, polyline, landmarks, trackY = .30) {
   const group = new THREE.Group();
   group.name = 'Monza start finish and pit complex';
   scene.add(group);
 
-  const curveLength = curve.getLength();
+  const trackDistance = createTrackGapLookup(curve);
   let travelled = 0;
   let total = 0;
   const gridIndex = Math.max(0, Math.min(polyline.length - 1, landmarks.gridIndex ?? 0));
@@ -22,7 +27,7 @@ export function addMonzaGridDetails(THREE, scene, curve, polyline, landmarks, tr
   const helper = new THREE.Object3D();
 
   function frameAt(metres) {
-    const u = ((gridU + metres / curveLength) % 1 + 1) % 1;
+    const u = trackDistance.behind(gridU, -metres);
     const point = curve.getPointAt(u);
     const forward = curve.getTangentAt(u).setY(0).normalize();
     const across = new THREE.Vector3(forward.z, 0, -forward.x);
@@ -140,15 +145,15 @@ export function addMonzaGridDetails(THREE, scene, curve, polyline, landmarks, tr
 
   // The 2026 field has 22 cars. The pole slot is on the left; successive
   // positions are staggered rather than paired at an identical station.
-  // The first slot encloses the RB22 already parked by the viewer at -14.5 m.
+  // The first slot encloses the RB22 parked at the slot centre, -14.1 m.
   const gridMarks = [];
   const yellowGuides = [];
   const weatheredDashes = [];
   const launchRubber = [];
   const startingSlots = [];
   for (let position = 0; position < 22; position++) {
-    const station = -10.7 - position * 9.05;
-    const center = position % 2 === 0 ? -2.72 : 2.72;
+    const station = -10.7 - position * GRID_SLOT_SPACING;
+    const center = position % 2 === 0 ? -GRID_LANE_CENTER : GRID_LANE_CENTER;
     const halfWidth = 1.36;
     const rear = station - 6.8;
     startingSlots.push({ station, center, number: position + 1 });

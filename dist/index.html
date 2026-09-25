@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#080d16" />
-    <title>RB22 2026 · Monoplace 3D interactive</title>
-    <meta name="description" content="Explorez en 3D une reconstruction de la monoplace 2026 de Max Verstappen et téléchargez son modèle GLB." />
+    <title>Monoplaces 2026 · Garage 3D interactif</title>
+    <meta name="description" content="Explorez en 3D les monoplaces 2026 de Max Verstappen, Lewis Hamilton, Pierre Gasly, Lando Norris, Kimi Antonelli et Gabriel Bortoleto, avec leurs modèles téléchargeables." />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23080d16'/%3E%3Cpath d='M10 42 35 15h12L26 42Z' fill='%23ffcc25'/%3E%3Cpath d='M25 48 46 23l8 8-16 17Z' fill='%23e31d2e'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./styles.css" />
     <script type="importmap">
@@ -18,15 +18,15 @@
     <script type="module" src="./main.js"></script>
   </head>
   <body>
-    <main class="viewer" id="viewer">
-      <canvas id="scene" aria-label="Modèle 3D de la monoplace" role="img"></canvas>
+    <main class="viewer" id="viewer" data-car="redbull">
+      <canvas id="scene" aria-label="Modèle 3D de la RB22 de Max Verstappen" role="img"></canvas>
 
       <header class="masthead">
         <div class="identity">
-          <span class="identity-mark" aria-hidden="true">03</span>
+          <span class="identity-mark" id="car-number" aria-hidden="true">03</span>
           <div>
-            <p class="eyebrow">MONOPLACE 3D</p>
-            <h1>RB22 <span>2026</span></h1>
+            <p class="eyebrow" id="team-name">RED BULL RACING</p>
+            <h1><span id="model-name">RB22</span> <span>2026</span></h1>
           </div>
         </div>
         <div class="masthead-actions">
@@ -34,6 +34,44 @@
           <span class="file-pill">ASSET WEB <span class="pill-dot"></span> GLB</span>
         </div>
       </header>
+
+      <section class="garage" data-count="6" aria-label="Garage des monoplaces 2026">
+        <p class="garage-heading">LES MONOPLACES <span>06 / 06</span></p>
+        <nav class="car-switcher" aria-label="Choisir une monoplace">
+          <button class="car-choice is-active" type="button" data-car-choice="redbull" aria-pressed="true">
+            <span class="car-choice-team">01 / RED BULL RACING</span>
+            <span class="car-choice-model">RB22 <span aria-hidden="true">↗</span></span>
+            <span class="car-choice-driver">Max Verstappen · N° 3</span>
+          </button>
+          <button class="car-choice" type="button" data-car-choice="ferrari" aria-pressed="false">
+            <span class="car-choice-team">02 / SCUDERIA FERRARI</span>
+            <span class="car-choice-model">SF-26 <span aria-hidden="true">↗</span></span>
+            <span class="car-choice-driver">Lewis Hamilton · N° 44</span>
+          </button>
+          <button class="car-choice" type="button" data-car-choice="alpine" aria-pressed="false">
+            <span class="car-choice-team">03 / BWT ALPINE F1 TEAM</span>
+            <span class="car-choice-model">A526 <span aria-hidden="true">↗</span></span>
+            <span class="car-choice-driver">Pierre Gasly · N° 10</span>
+          </button>
+          <button class="car-choice" type="button" data-car-choice="mclaren" aria-pressed="false">
+            <span class="car-choice-team">04 / MCLAREN F1 TEAM</span>
+            <span class="car-choice-model">MCL40 <span aria-hidden="true">↗</span></span>
+            <span class="car-choice-driver">Lando Norris · N° 1</span>
+          </button>
+          <button class="car-choice" type="button" data-car-choice="mercedes" aria-pressed="false">
+            <span class="car-choice-team">05 / MERCEDES-AMG F1</span>
+            <span class="car-choice-model">W17 <span aria-hidden="true">↗</span></span>
+            <span class="car-choice-driver">Kimi Antonelli · N° 12</span>
+          </button>
+          <button class="car-choice" type="button" data-car-choice="audi" aria-pressed="false">
+            <span class="car-choice-team">06 / AUDI REVOLUT F1 TEAM</span>
+            <span class="car-choice-model">R26 <span aria-hidden="true">↗</span></span>
+            <span class="car-choice-driver">Gabriel Bortoleto · N° 5</span>
+          </button>
+        </nav>
+      </section>
+
+      <p class="driver-label" id="driver-label"><span>PILOTE / 03</span> MAX VERSTAPPEN</p>
 
       <div class="status" id="status" role="status" aria-live="polite">
         <div class="status-glow" aria-hidden="true"></div>
@@ -45,6 +83,7 @@
             <div class="progress-fill" id="progress-fill"></div>
           </div>
           <p class="status-detail" id="status-detail">Le premier chargement peut prendre quelques instants.</p>
+          <button class="status-return" id="status-return" type="button" hidden>Revenir au modèle précédent</button>
         </div>
       </div>
 
@@ -56,7 +95,7 @@
         <div class="toolbar-actions">
           <button type="button" id="spin" disabled aria-pressed="false">Rotation auto</button>
           <button type="button" id="reset" disabled>Vue initiale</button>
-          <a href="./rb22_max_verstappen_2026.glb?v=20260924-2" download>Télécharger le GLB <span aria-hidden="true">↗</span></a>
+          <a id="download-model" href="./rb22_max_verstappen_2026.glb?v=20260924-2" download>Télécharger le GLB <span aria-hidden="true">↗</span></a>
         </div>
       </footer>
     </main>

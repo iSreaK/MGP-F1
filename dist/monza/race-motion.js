@@ -305,6 +305,15 @@ export function createRaceController(THREE, curve, car, options = {}) {
     stop() { stats.running = false; return stats; },
     reset,
     update,
+    // Place a second car a fixed distance behind the leader, while retaining
+    // the same four-wheel road contact and opening-grid lane transition.
+    placeAt(u, distanceMeters = stats.distanceMeters) {
+      stats.progress = wrap01(finite(u, startU));
+      stats.u = stats.progress;
+      stats.distanceMeters = Math.max(0, finite(distanceMeters, 0));
+      placeCar();
+      return stats;
+    },
     setWet(wet) { wetGrip = wet ? .82 : 1; return stats; },
     getDirection(target = new THREE.Vector3()) { return target.copy(tangent); },
     getSpeedProfile() { return speedProfile.slice(); },

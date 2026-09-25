@@ -13,8 +13,56 @@ const progressTrack = document.querySelector('#progress-track');
 const progressFill = document.querySelector('#progress-fill');
 const spinButton = document.querySelector('#spin');
 const resetButton = document.querySelector('#reset');
+const returnButton = document.querySelector('#status-return');
+const downloadLink = document.querySelector('#download-model');
+const monzaLink = document.querySelector('.scene-link');
+const carChoices = [...document.querySelectorAll('[data-car-choice]')];
 
-const modelURL = new URL('./rb22_max_verstappen_2026.glb?v=20260924-2', import.meta.url);
+const cars = {
+  redbull: {
+    name: 'RB22', team: 'RED BULL RACING', driver: 'MAX VERSTAPPEN', driverName: 'Max Verstappen', number: '03',
+    url: './rb22_max_verstappen_2026.glb?v=20260924-2',
+  },
+  ferrari: {
+    name: 'SF-26', team: 'SCUDERIA FERRARI', driver: 'LEWIS HAMILTON', driverName: 'Lewis Hamilton', number: '44',
+    url: './ferrari_sf26_hamilton_44.glb?v=20260925-4',
+  },
+  alpine: {
+    name: 'A526', team: 'BWT ALPINE F1 TEAM', driver: 'PIERRE GASLY', driverName: 'Pierre Gasly', number: '10',
+    url: './alpine_a526_gasly_10.glb?v=20260925-2',
+  },
+  mclaren: {
+    name: 'MCL40', team: 'MCLAREN FORMULA 1 TEAM', driver: 'LANDO NORRIS', driverName: 'Lando Norris', number: '1',
+    url: './mclaren_mcl40_norris_1.glb?v=20260925-2',
+  },
+  mercedes: {
+    name: 'W17', team: 'MERCEDES-AMG PETRONAS F1 TEAM', driver: 'KIMI ANTONELLI', driverName: 'Kimi Antonelli', number: '12',
+    url: './mercedes_w17_antonelli_12.glb?v=20260925-2',
+  },
+  audi: {
+    name: 'R26', team: 'AUDI REVOLUT F1 TEAM', driver: 'GABRIEL BORTOLETO', driverName: 'Gabriel Bortoleto', number: '5',
+    url: './audi_r26_bortoleto_5.glb?v=20260925-1',
+  },
+};
+
+function updateCarUI(key) {
+  const car = cars[key];
+  viewer.dataset.car = key;
+  document.querySelector('#team-name').textContent = car.team;
+  document.querySelector('#model-name').textContent = car.name;
+  document.querySelector('#car-number').textContent = car.number;
+  document.querySelector('#driver-label').innerHTML = `<span>PILOTE / ${car.number}</span> ${car.driver}`;
+  canvas.setAttribute('aria-label', `Modèle 3D de la ${car.name} de ${car.driverName}`);
+  document.title = `${car.name} 2026 · Garage 3D interactif`;
+  downloadLink.href = new URL(car.url, import.meta.url).href;
+  downloadLink.setAttribute('aria-label', `Télécharger le modèle 3D ${car.name} de ${car.driver}`);
+  monzaLink.href = key === 'redbull' ? './monza/' : `./monza/?car=${encodeURIComponent(key)}`;
+  for (const choice of carChoices) {
+    const selected = choice.dataset.carChoice === key;
+    choice.classList.toggle('is-active', selected);
+    choice.setAttribute('aria-pressed', String(selected));
+  }
+}
 
 function fail(message, detail) {
   status.classList.remove('is-hidden');
@@ -89,6 +137,10 @@ function startViewer() {
   let initialTarget = new THREE.Vector3();
   let loaded = false;
   let ground = null;
+  let activeModel = null;
+  let activeKey = null;
+  let requestId = 0;
+  const cachedModels = new Map();
 
   function resize() {
     const width = Math.max(1, viewer.clientWidth);
@@ -102,6 +154,7 @@ function startViewer() {
   resize();
 
   function fitModel(model) {
+    model.position.set(0, 0, 0);
     const box = new THREE.Box3().setFromObject(model);
     if (box.isEmpty()) throw new Error('Le fichier ne contient aucune géométrie visible.');
 
@@ -116,7 +169,8 @@ function startViewer() {
     const horizontalFOV = 2 * Math.atan(Math.tan(verticalFOV / 2) * camera.aspect);
     // The monoplace is long and low, so a sphere-fit leaves too much empty space.
     // Keep a little more breathing room on narrow screens, where width is limiting.
-    const framing = THREE.MathUtils.lerp(1.02, 0.69, THREE.MathUtils.smoothstep(camera.aspect, 0.8, 1.6));
+    // Leave the nose and front wing visible beside the garage selector.
+    const framing = THREE.MathUtils.lerp(1.02, 0.79, THREE.MathUtils.smoothstep(camera.aspect, 0.8, 1.6));
     const distance = (radius / Math.sin(Math.min(verticalFOV, horizontalFOV) / 2)) * framing;
     const view = new URLSearchParams(location.search).get('view');
     let direction;
@@ -127,6 +181,7 @@ function startViewer() {
     else if (view === 'rear') direction = new THREE.Vector3(1, 0.22, 0.001);
     else if (size.x >= size.z) direction = new THREE.Vector3(-0.8, 0.47, 1.3);
     else direction = new THREE.Vector3(1.3, 0.47, -0.8);
+    camera.up.set(0, 1, 0);
     if (view === 'top') camera.up.set(0, 0, -1);
 
     if (view === 'cockpit') initialTarget.set(-.16-center.x, .79-center.y, 0);
@@ -161,6 +216,11 @@ function startViewer() {
     fill.position.set(radius * 1.4, radius * 1.5, radius * 2.0);
 
     const groundMaterial = new THREE.ShadowMaterial({ color: 0x02050c, opacity: 0.48 });
+    if (ground) {
+      scene.remove(ground);
+      ground.geometry.dispose();
+      ground.material.dispose();
+    }
     ground = new THREE.Mesh(new THREE.PlaneGeometry(radius * 14, radius * 14), groundMaterial);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = box.min.y - radius * 0.008;
@@ -169,42 +229,96 @@ function startViewer() {
   }
 
   const loader = new GLTFLoader();
-  loader.load(
-    modelURL.href,
-    ({ scene: model }) => {
-      try {
+  function activateCar(key, model) {
+    const previousModel = activeModel;
+    try {
+      if (!model.parent) scene.add(model);
+      model.visible = true;
+      fitModel(model);
+      if (previousModel && previousModel !== model) previousModel.visible = false;
+      activeModel = model;
+      activeKey = key;
+      loaded = true;
+      controls.enabled = true;
+      spinButton.disabled = false;
+      resetButton.disabled = false;
+      controls.autoRotate = false;
+      spinButton.setAttribute('aria-pressed', 'false');
+      updateCarUI(key);
+      status.classList.add('is-hidden');
+      const url = new URL(location.href);
+      if (key === 'redbull') url.searchParams.delete('car');
+      else url.searchParams.set('car', key);
+      history.replaceState(null, '', url);
+    } catch (error) {
+      model.visible = false;
+      if (previousModel) previousModel.visible = true;
+      fail('Le modèle ne peut pas être affiché.', error.message || 'Vérifiez la structure du fichier GLB.');
+      returnButton.hidden = !activeModel;
+      console.error(error);
+    }
+  }
+
+  function loadCar(key) {
+    if (!cars[key]) return;
+    const token = ++requestId;
+    status.classList.remove('is-hidden', 'is-error');
+    statusKicker.textContent = 'CHARGEMENT DU MODÈLE';
+    statusMessage.textContent = `Préparation de la ${cars[key].name}…`;
+    statusDetail.textContent = 'Le premier chargement peut prendre quelques instants.';
+    progressTrack.hidden = false;
+    progressFill.style.width = '5%';
+    returnButton.hidden = true;
+    controls.enabled = false;
+    if (cachedModels.has(key)) {
+      activateCar(key, cachedModels.get(key));
+      return;
+    }
+    loader.load(
+      new URL(cars[key].url, import.meta.url).href,
+      ({ scene: model }) => {
         model.traverse((object) => {
           if (object.isMesh) {
             object.castShadow = true;
             object.receiveShadow = true;
           }
         });
-        scene.add(model);
-        fitModel(model);
-        loaded = true;
-        controls.enabled = true;
-        spinButton.disabled = false;
-        resetButton.disabled = false;
-        status.classList.add('is-hidden');
-      } catch (error) {
-        fail('Le modèle ne peut pas être affiché.', error.message || 'Vérifiez la structure du fichier GLB.');
+        cachedModels.set(key, model);
+        if (token === requestId) activateCar(key, model);
+      },
+      (event) => {
+        if (token !== requestId) return;
+        if (event.lengthComputable && event.total > 0) {
+          const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+          progressFill.style.width = `${percent}%`;
+          statusMessage.textContent = `Chargement de la ${cars[key].name} · ${percent} %`;
+        } else if (event.loaded > 0) {
+          statusMessage.textContent = `Chargement de la ${cars[key].name} · ${(event.loaded / 1048576).toFixed(1)} Mo`;
+        }
+      },
+      (error) => {
+        if (token !== requestId) return;
+        fail('Le fichier GLB est introuvable ou illisible.', `Impossible d'ouvrir ${cars[key].name}. Réessayez dans quelques instants.`);
+        returnButton.hidden = !activeModel;
+        if (activeModel) {
+          controls.enabled = true;
+          updateCarUI(activeKey);
+        } else if (key !== 'redbull') {
+          loadCar('redbull');
+        }
         console.error(error);
-      }
-    },
-    (event) => {
-      if (event.lengthComputable && event.total > 0) {
-        const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
-        progressFill.style.width = `${percent}%`;
-        statusMessage.textContent = `Chargement du modèle · ${percent} %`;
-      } else if (event.loaded > 0) {
-        statusMessage.textContent = `Chargement du modèle · ${(event.loaded / 1048576).toFixed(1)} Mo`;
-      }
-    },
-    (error) => {
-      fail('Le fichier GLB est introuvable ou illisible.', 'Vérifiez que rb22_max_verstappen_2026.glb se trouve à la racine du site, puis rechargez la page.');
-      console.error(error);
-    },
-  );
+      },
+    );
+  }
+
+  carChoices.forEach((choice) => {
+    choice.addEventListener('click', () => {
+      if (choice.dataset.carChoice !== activeKey) loadCar(choice.dataset.carChoice);
+    });
+  });
+  returnButton.addEventListener('click', () => status.classList.add('is-hidden'));
+  const initialKey = new URLSearchParams(location.search).get('car');
+  loadCar(cars[initialKey] ? initialKey : 'redbull');
 
   spinButton.addEventListener('click', () => {
     const active = spinButton.getAttribute('aria-pressed') !== 'true';
