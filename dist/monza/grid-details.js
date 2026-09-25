@@ -33,8 +33,10 @@ export function addMonzaGridDetails(THREE, scene, curve, polyline, landmarks, tr
   }
 
   const asphalt = new THREE.MeshStandardMaterial({ color: 0x323b3c, roughness: .97, side: THREE.DoubleSide });
-  const white = new THREE.MeshBasicMaterial({ color: 0xe9ede8, side: THREE.DoubleSide });
-  const yellow = new THREE.MeshBasicMaterial({ color: 0xd5c26f, side: THREE.DoubleSide });
+  const white = new THREE.MeshStandardMaterial({ color: 0xe2e4dd, roughness: .98, side: THREE.DoubleSide });
+  const yellow = new THREE.MeshStandardMaterial({ color: 0xd0b94d, roughness: .98, side: THREE.DoubleSide });
+  const wornPaint = new THREE.MeshStandardMaterial({ color: 0xa5aaa2, roughness: 1, side: THREE.DoubleSide });
+  const rubber = new THREE.MeshBasicMaterial({ color: 0x101817, transparent: true, opacity: .31, depthWrite: false, side: THREE.DoubleSide });
   const concrete = new THREE.MeshStandardMaterial({ color: 0xabb0ac, roughness: .94 });
   const darkConcrete = new THREE.MeshStandardMaterial({ color: 0x485050, roughness: .86 });
   const structure = new THREE.MeshStandardMaterial({ color: 0x293331, metalness: .32, roughness: .57 });
@@ -42,6 +44,8 @@ export function addMonzaGridDetails(THREE, scene, curve, polyline, landmarks, tr
   const doors = new THREE.MeshStandardMaterial({ color: 0x84908f, metalness: .35, roughness: .65 });
   const roof = new THREE.MeshStandardMaterial({ color: 0xd6d9d3, metalness: .28, roughness: .64 });
   const red = new THREE.MeshStandardMaterial({ color: 0xa92b30, roughness: .67 });
+  const apronConcrete = new THREE.MeshStandardMaterial({ color: 0x707674, roughness: .97, side: THREE.DoubleSide });
+  const apronConcreteDark = new THREE.MeshStandardMaterial({ color: 0x666d6a, roughness: .97, side: THREE.DoubleSide });
 
   // One curved polygon per pavement marking family keeps the main straight
   // smooth even though the CAD-like pit building is made of repeated bays.
@@ -116,19 +120,85 @@ export function addMonzaGridDetails(THREE, scene, curve, polyline, landmarks, tr
   for (let s = -210; s < 220; s += 10) laneDashes.push([s, s + 4.4, 13.6, 13.76]);
   surface('Pit lane speed and working-lane divider', yellow, laneDashes, trackY + .028);
 
-  // Staggered two-column Formula 1 grid: one longitudinal marker and an L
-  // shaped front edge for each of twenty cars, all laid flat on the track.
-  const gridMarks = [];
-  for (let row = 0; row < 10; row++) {
-    for (const lane of [-1, 1]) {
-      const station = -23 - row * 17.6 - (lane > 0 ? 8.8 : 0);
-      const center = lane * 2.78;
-      gridMarks.push([station, station + .18, center - 1.2, center + 1.2]);
-      gridMarks.push([station - 2.7, station, center - 1.2, center - 1.05]);
-      gridMarks.push([station - 2.7, station, center + 1.05, center + 1.2]);
+  // The pit fast lane is immediately outside the separation wall, and the
+  // painted pit boxes occupy the working lane towards the garage doors.
+  // Timing lines and narrowing merge arrows stay entirely on the pit road.
+  const pitLines = [
+    [-215.1, -214.75, 8.08, 19.65],
+    [225.2, 225.55, 8.08, 19.65],
+  ];
+  for (let s = -217.2; s < 223.8; s += 3.5) pitLines.push([s, Math.min(223.8, s + 3.5), 8.02, 8.16]);
+  surface('Pit speed control and fast lane white lines', white, pitLines, trackY + .033);
+  const pitChevrons = [];
+  for (const start of [-235, -231, -227, 229, 233, 237]) {
+    for (let k = 0; k < 5; k++) {
+      const s = start + k * 1.2;
+      pitChevrons.push([s, s + .36, 8.5 + k * .60, 8.90 + k * .60]);
     }
   }
-  surface('Twenty staggered painted starting boxes', white, gridMarks, trackY + .052);
+  surface('Pit entry exit merge chevrons', white, pitChevrons, trackY + .039);
+
+  // The 2026 field has 22 cars. The pole slot is on the left; successive
+  // positions are staggered rather than paired at an identical station.
+  // The first slot encloses the RB22 already parked by the viewer at -14.5 m.
+  const gridMarks = [];
+  const yellowGuides = [];
+  const weatheredDashes = [];
+  const launchRubber = [];
+  const startingSlots = [];
+  for (let position = 0; position < 22; position++) {
+    const station = -10.7 - position * 9.05;
+    const center = position % 2 === 0 ? -2.72 : 2.72;
+    const halfWidth = 1.36;
+    const rear = station - 6.8;
+    startingSlots.push({ station, center, number: position + 1 });
+    gridMarks.push([station - .16, station + .16, center - halfWidth, center + halfWidth]);
+    gridMarks.push([rear, station, center - halfWidth, center - halfWidth + .15]);
+    gridMarks.push([rear, station, center + halfWidth - .15, center + halfWidth]);
+    gridMarks.push([rear, rear + .15, center - halfWidth, center - halfWidth + .77]);
+    gridMarks.push([rear, rear + .15, center + halfWidth - .77, center + halfWidth]);
+
+    // Short visual reference ahead of the nose, as used on current F1 grids.
+    yellowGuides.push([station + .82, station + 2.8, center - .065, center + .065]);
+    // A few older transverse traces are visible under the current paint.
+    if (position % 3 === 1) weatheredDashes.push([station - 3.5, station - 3.39, center - .92, center + .92]);
+    for (const wheelOffset of [-.78, .78]) {
+      const jitter = .17 * Math.sin(position * 8.7 + wheelOffset);
+      launchRubber.push([rear - 4.2 - position % 3, rear + 1.7, center + wheelOffset + jitter, center + wheelOffset + .16 + jitter]);
+      launchRubber.push([rear - 2.4, rear + .7, center + wheelOffset + .32 + jitter, center + wheelOffset + .41 + jitter]);
+    }
+  }
+  surface('Rubber launch streaks on the grid', rubber, launchRubber, trackY + .041);
+  surface('Older scuffed grid traces', wornPaint, weatheredDashes, trackY + .044);
+  surface('Twenty two staggered FIA grid boxes', white, gridMarks, trackY + .055);
+  surface('Grid alignment reference bars', yellow, yellowGuides, trackY + .058);
+
+  if (typeof document !== 'undefined') {
+    const textTilt = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+    for (const slot of startingSlots) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(228,230,221,.85)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '800 82px Arial, sans-serif';
+      ctx.fillText(String(slot.number), 64, 67);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      const label = new THREE.Mesh(
+        new THREE.PlaneGeometry(.95, .95),
+        new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, side: THREE.DoubleSide }),
+      );
+      label.name = `Painted grid position ${slot.number}`;
+      const frame = frameAt(slot.station - 2.2);
+      label.position.copy(frame.point).addScaledVector(frame.across, slot.center > 0 ? .83 : -.83);
+      label.position.y += .066;
+      label.quaternion.copy(frame.quaternion).multiply(textTilt);
+      group.add(label);
+    }
+  }
 
   // Separate chequered finish stripe and its flanking white bars.  The strip
   // sits on the actual track centreline, not on the pit-building chord.
@@ -175,6 +245,63 @@ export function addMonzaGridDetails(THREE, scene, curve, polyline, landmarks, tr
   instancedBoxes('Pit building red fascia', [.43, .60, bayLength + .1], red, bays, 19.93, 10.61);
   instancedBoxes('Pit box canopy', [5.65, .22, bayLength + .1], roof, bays, 20.0, 6.13);
   instancedBoxes('Canopy support ribs', [5.6, .18, .17], structure, bays, 20.0, 5.95);
+
+  // Working apron slabs meet the garage fronts. Their joints and team boards
+  // make the pit lane read as an occupied 2026 F1 complex from track level.
+  const lightSlabs = [], darkSlabs = [], drainGrates = [];
+  for (let i = 0; i < bays.length; i++) {
+    const station = bays[i];
+    (i % 4 === 0 ? darkSlabs : lightSlabs).push([station - 5.32, station + 5.32, 14.28, 19.85]);
+    drainGrates.push([station - 3.65, station + 3.65, 19.62, 19.78]);
+  }
+  surface('Concrete pit working apron', apronConcrete, lightSlabs, trackY + .017);
+  surface('Weathered concrete pit apron panels', apronConcreteDark, darkSlabs, trackY + .018);
+  surface('Pit box drainage channel grates', darkConcrete, drainGrates, trackY + .024);
+
+  if (typeof document !== 'undefined') {
+    const teamBoards = [
+      ['CADILLAC', '#333d42', '#f4f4ed'],
+      ['ALPINE', '#226e9d', '#f5f8fa'],
+      ['AUDI', '#a82432', '#fff4f3'],
+      ['HAAS', '#c5c7c6', '#232727'],
+      ['ASTON MARTIN', '#13564e', '#f1f4ee'],
+      ['RACING BULLS', '#284879', '#f3f6fb'],
+      ['WILLIAMS', '#2672b8', '#f8f9fc'],
+      ['FERRARI', '#bd232b', '#fff4ec'],
+      ['RED BULL RACING', '#17254b', '#f3f4f8'],
+      ['MERCEDES', '#285f5d', '#f1f4f1'],
+      ['McLAREN', '#cb6924', '#171b1b'],
+    ];
+    const faceRoad = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+    const boardMaterials = teamBoards.map(([name, background, foreground]) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 80;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, 512, 80);
+      ctx.fillStyle = foreground;
+      ctx.fillRect(0, 0, 11, 80);
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      ctx.font = '700 38px Arial, sans-serif';
+      ctx.fillText(name, 262, 43, 440);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = 8;
+      return new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+    });
+    for (let i = 0; i < bays.length; i++) {
+      const frame = frameAt(bays[i]);
+      const team = Math.min(teamBoards.length - 1, Math.floor(i / 3));
+      const board = new THREE.Mesh(new THREE.PlaneGeometry(8.8, .72), boardMaterials[team]);
+      board.name = `${teamBoards[team][0]} pit garage fascia`;
+      board.position.copy(frame.point).addScaledVector(frame.across, 20.87);
+      board.position.y = frame.point.y + 5.45 - trackY;
+      board.quaternion.copy(frame.quaternion).multiply(faceRoad);
+      group.add(board);
+    }
+  }
 
   const pitBoxes = [];
   for (const station of bays) {
@@ -245,19 +372,21 @@ export function addMonzaGridDetails(THREE, scene, curve, polyline, landmarks, tr
   gantryBox('Pit wall gantry column', [.50, 8.25, .63], 7.23, 4.125, 0, structure);
   gantryBox('Start light truss', [15.1, 1.95, 1.12], 0, 8.35, 0, structure);
   gantryBox('Gantry white edge', [15.1, .12, 1.18], 0, 9.38, 0, roof);
-  gantryBox('Start signal black face', [11.65, .78, .14], 0, 6.84, -.66, darkConcrete);
+  gantryBox('Start signal black face', [11.65, 1.26, .18], 0, 6.87, -.66, darkConcrete);
 
   const lightOff = new THREE.MeshBasicMaterial({ color: 0x6b191c });
   const lightRim = new THREE.MeshStandardMaterial({ color: 0x171c1c, roughness: .42 });
   for (let i = -2; i <= 2; i++) {
-    const rim = new THREE.Mesh(new THREE.CylinderGeometry(.28, .28, .09, 16), lightRim);
-    rim.rotation.x = Math.PI / 2;
-    rim.position.set(i * 1.74, 6.84, -.76);
-    gantry.add(rim);
-    const lamp = new THREE.Mesh(new THREE.CircleGeometry(.19, 16), lightOff);
-    lamp.position.set(i * 1.74, 6.84, -.82);
-    lamp.rotation.y = Math.PI;
-    gantry.add(lamp);
+    for (const y of [6.59, 7.14]) {
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(.24, .24, .095, 16), lightRim);
+      rim.rotation.x = Math.PI / 2;
+      rim.position.set(i * 1.74, y, -.79);
+      gantry.add(rim);
+      const lamp = new THREE.Mesh(new THREE.CircleGeometry(.165, 16), lightOff);
+      lamp.position.set(i * 1.74, y, -.86);
+      lamp.rotation.y = Math.PI;
+      gantry.add(lamp);
+    }
   }
 
   if (typeof document !== 'undefined') {

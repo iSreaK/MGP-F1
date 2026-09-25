@@ -33,7 +33,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid #fff; outline-offset:
 }
 .atlas::after {
   z-index: 1;
-  background: linear-gradient(180deg, rgba(3, 9, 13, .68), transparent 25%, transparent 65%, rgba(3, 9, 13, .78));
+  background: linear-gradient(180deg, rgba(3, 9, 13, .39), transparent 25%, transparent 65%, rgba(3, 9, 13, .66));
 }
 canvas {
   position: absolute;
@@ -292,6 +292,9 @@ h1 span { color: #ff5851; font-weight: 700; }
 .actions .race-button[aria-pressed="true"] { border-color: #ff867c; background: #b92124; color: #fff; }
 .actions .camera-button { border-color: rgba(255, 255, 255, .23); background: rgba(255, 255, 255, .08); color: #f4f5ef; }
 .actions .camera-button:hover:not(:disabled), .actions .camera-button:focus-visible { border-color: rgba(255, 255, 255, .55); background: rgba(255, 255, 255, .17); }
+.actions .weather-button { border-color: rgba(142, 193, 211, .38); color: #d5e7ec; background: rgba(33, 69, 81, .29); }
+.actions .weather-button:hover:not(:disabled), .actions .weather-button:focus-visible { border-color: rgba(175, 220, 231, .7); background: rgba(53, 96, 108, .42); }
+.actions .weather-button[aria-pressed="true"] { border-color: rgba(156, 207, 229, .8); color: #fff; background: rgba(49, 105, 126, .54); }
 
 .loading {
   position: absolute; inset: 0; z-index: 5;

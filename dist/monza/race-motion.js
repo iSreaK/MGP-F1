@@ -70,8 +70,10 @@ function sectionAt(u) {
   return SECTIONS[0][1];
 }
 
+import { WHEEL_GEOMETRY } from './wheel-spin.js';
+
 /**
- * createRaceController(THREE, curve, car, { startU, laneOffset, carY,
+ * createRaceController(THREE, curve, car, { startU, laneOffset, trackHeightAt,
  *   maxSpeedKmh, minCornerSpeedKmh, lateralG, acceleration, braking, onLap })
  *
  * start(), stop(), reset([u]), update(dtSeconds) retain the previous API.
@@ -92,9 +94,12 @@ export function createRaceController(THREE, curve, car, options = {}) {
   const acceleration = clamp(finite(options.acceleration, 11), 1, 25);
   const braking = clamp(finite(options.braking, 23), 2, 45);
   const laneOffset = clamp(finite(options.laneOffset, 0), -3, 3);
-  const carY = finite(options.carY, 0.34);
+  const trackHeightAt = typeof options.trackHeightAt === 'function'
+    ? options.trackHeightAt
+    : u => curve.getPointAt(wrap01(u)).y;
   const startU = wrap01(finite(options.startU, 0));
   const onLap = typeof options.onLap === 'function' ? options.onLap : null;
+  let wetGrip = 1;
 
   const side = new THREE.Vector3();
   function pointOnLine(u, target = new THREE.Vector3(), offset = lateralOffset(u)) {
@@ -207,9 +212,35 @@ export function createRaceController(THREE, curve, car, options = {}) {
     const gridBlend = 1 - smoothstep(clamp(stats.distanceMeters / 120, 0, 1));
     const offset = raceOffset + (laneOffset - raceOffset) * gridBlend;
     pointOnLine(stats.progress, car.position, offset);
-    car.position.y += carY - .30;
     directionOnLine(stats.progress, tangent);
-    car.rotation.y = Math.atan2(tangent.z, -tangent.x);
+    const yaw = Math.atan2(tangent.z, -tangent.x);
+    const { frontX, rearX, frontZ, rearZ, centerY, radius } = WHEEL_GEOMETRY;
+    const cosYaw = Math.cos(yaw), sinYaw = Math.sin(yaw);
+    const heightUnderWheel = (wheelX, wheelZ, pitch) => {
+      // R_y(yaw) * R_z(pitch) matches the car's Euler rotation below.
+      const localX = wheelX * Math.cos(pitch) - centerY * Math.sin(pitch);
+      const x = car.position.x + localX * cosYaw + wheelZ * sinYaw;
+      const z = car.position.z - localX * sinYaw + wheelZ * cosYaw;
+      return trackHeightAt(stats.progress, x, z);
+    };
+    const axleHeights = pitch => ({
+      front: (heightUnderWheel(frontX, -frontZ, pitch) + heightUnderWheel(frontX, frontZ, pitch)) * .5,
+      rear: (heightUnderWheel(rearX, -rearZ, pitch) + heightUnderWheel(rearX, rearZ, pitch)) * .5,
+    });
+    let pitch = 0;
+    for (let i = 0; i < 2; i++) {
+      const { front, rear } = axleHeights(pitch);
+      pitch = Math.asin(clamp((rear - front) / (rearX - frontX), -.9, .9));
+    }
+    const { front: frontHeight, rear: rearHeight } = axleHeights(pitch);
+    // A circular tyre's bottom is centre minus radius even when pitched.
+    // Fit both axles to the rendered road, then average their origin heights
+    // to absorb the tiny residual from longitudinal road curvature.
+    const wheelBottomAtOrigin = centerY * Math.cos(pitch) - radius;
+    const frontOrigin = frontHeight - frontX * Math.sin(pitch) - wheelBottomAtOrigin;
+    const rearOrigin = rearHeight - rearX * Math.sin(pitch) - wheelBottomAtOrigin;
+    car.position.y = (frontOrigin + rearOrigin) * .5;
+    car.rotation.set(0, yaw, pitch);
     stats.sectionName = sectionAt(stats.progress);
   }
 
@@ -220,7 +251,7 @@ export function createRaceController(THREE, curve, car, options = {}) {
     stats.laps = 0;
     stats.lap = 0;
     stats.speedKmh = 0;
-    stats.targetSpeedKmh = interpolated(speedProfile, stats.progress) * 3.6;
+    stats.targetSpeedKmh = interpolated(speedProfile, stats.progress) * wetGrip * 3.6;
     stats.lapTime = 0;
     stats.lastLapTime = null;
     stats.distanceMeters = 0;
@@ -233,10 +264,11 @@ export function createRaceController(THREE, curve, car, options = {}) {
     const dt = clamp(finite(dtSeconds, 0), 0, 0.1);
     if (dt === 0) return stats;
     const currentSpeed = stats.speedKmh / 3.6;
-    const targetSpeed = interpolated(speedProfile, stats.progress);
-    const effectiveAcceleration = Math.max(2.8, acceleration * (1 - .72 * (currentSpeed / maxSpeed) ** 2));
+    const targetSpeed = interpolated(speedProfile, stats.progress) * wetGrip;
+    const effectiveAcceleration = Math.max(2.4, acceleration * wetGrip * (1 - .72 * (currentSpeed / maxSpeed) ** 2));
+    const effectiveBraking = braking * wetGrip;
     const speed = clamp(
-      currentSpeed + clamp(targetSpeed - currentSpeed, -braking * dt, effectiveAcceleration * dt),
+      currentSpeed + clamp(targetSpeed - currentSpeed, -effectiveBraking * dt, effectiveAcceleration * dt),
       0,
       maxSpeed,
     );
@@ -273,6 +305,7 @@ export function createRaceController(THREE, curve, car, options = {}) {
     stop() { stats.running = false; return stats; },
     reset,
     update,
+    setWet(wet) { wetGrip = wet ? .82 : 1; return stats; },
     getDirection(target = new THREE.Vector3()) { return target.copy(tangent); },
     getSpeedProfile() { return speedProfile.slice(); },
   };

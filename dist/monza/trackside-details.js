@@ -113,35 +113,29 @@ export function addTracksideDetails(THREE, scene, curve, polyline, landmarks, tr
     }
   }
 
-  // A single overhead landmark on the long run toward Ascari makes the
-  // circuit easier to read both from the air and from the chase camera.
-  const portalAt = pointAt(turnU('T7') + 155 / length);
-  const portal = new THREE.Group();
-  portal.name = 'Monza circuit bridge';
-  portal.position.copy(portalAt.point);
-  portal.position.y = terrainHeightAt(portal.position.x, portal.position.z);
-  portal.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(portalAt.across, up, portalAt.forward));
-  group.add(portal);
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(24.7, 2.35, 1.2), dark);
-  beam.position.y = 8.3;
-  beam.castShadow = true;
-  portal.add(beam);
-  for (const x of [-11.8, 11.8]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(.75, 7.5, 1), paintedSteel);
-    leg.position.set(x, 3.75, 0);
-    leg.castShadow = true;
-    portal.add(leg);
-    const redBase = new THREE.Mesh(new THREE.BoxGeometry(1.25, .8, 1.48), red);
-    redBase.position.set(x, .4, 0);
-    portal.add(redBase);
-  }
-  const portalMaterial = new THREE.MeshBasicMaterial({ map: portalTexture(THREE), side: THREE.DoubleSide });
-  for (const facing of [-1, 1]) {
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(23.4, 1.78), portalMaterial);
-    sign.position.set(0, 8.37, facing * .64);
-    if (facing < 0) sign.rotation.y = Math.PI;
-    portal.add(sign);
-  }
+  // The 1955 oval survives above the straight between Serraglio and Ascari.
+  // It is a weathered concrete road, not a billboard portal. Its piers are
+  // well outside the current 11 m racing surface and its soffit clears cars.
+  const ovalAt = pointAt(turnU('T7') + 155 / length);
+  const ovalBridge = new THREE.Group();
+  ovalBridge.name = 'Historic high-speed oval overpass before Ascari';
+  ovalBridge.position.copy(ovalAt.point);
+  ovalBridge.position.y = terrainHeightAt(ovalBridge.position.x, ovalBridge.position.z);
+  ovalBridge.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(ovalAt.across, up, ovalAt.forward));
+  group.add(ovalBridge);
+  addHistoricOvalBridge(THREE, ovalBridge, terrainHeightAt);
+
+  // A short remnant of the steep southern banking sits beyond the outside of
+  // Alboreto. It frames the exit in the aerial and TV cameras without joining
+  // the active Grand Prix road.
+  const southAt = pointAt(turnU('T11') + 125 / length);
+  const southBank = new THREE.Group();
+  southBank.name = 'Historic southern banking beyond Alboreto';
+  southBank.position.copy(southAt.point).addScaledVector(southAt.across, -110);
+  southBank.position.y = terrainHeightAt(southBank.position.x, southBank.position.z);
+  southBank.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(southAt.across, up, southAt.forward));
+  group.add(southBank);
+  addHistoricSouthBanking(THREE, southBank, terrainHeightAt);
 
   // A few compact tyre walls protect selected corner exits. Instancing keeps
   // the visual detail cheap even in the aerial view.
@@ -279,6 +273,203 @@ export function addTracksideDetails(THREE, scene, curve, polyline, landmarks, tr
   return group;
 }
 
+function addHistoricOvalBridge(THREE, parent, terrainHeightAt) {
+  const concrete = new THREE.MeshStandardMaterial({ color: 0xc0bdb3, vertexColors: true, roughness: 1, side: THREE.DoubleSide });
+  const underside = new THREE.MeshStandardMaterial({ color: 0x757a75, roughness: 1, side: THREE.DoubleSide });
+  const railMaterial = new THREE.MeshStandardMaterial({ color: 0x535c59, metalness: .34, roughness: .76 });
+  const deckZ = x => .068 * x + .00155 * x * x;
+  const deckY = (x, w) => 8.25 + .012 * x + .00025 * x * x + .037 * w;
+  const width = 11.6;
+  const divisions = 42;
+  const vertices = [];
+  const colours = [];
+  const indices = [];
+  for (let i = 0; i <= divisions; i++) {
+    const x = -43 + 86 * i / divisions;
+    for (let j = 0; j <= 6; j++) {
+      const w = width * (j / 6 - .5);
+      vertices.push(x, deckY(x, w), deckZ(x) + w);
+      const stain = .81 + .09 * Math.sin(x * .19 + j * 2.8) + .05 * Math.cos(x * .58 - j);
+      colours.push(stain, stain * .99, stain * .96);
+      if (i < divisions && j < 6) {
+        const a = i * 7 + j;
+        indices.push(a, a + 1, a + 7, a + 1, a + 8, a + 7);
+      }
+    }
+  }
+  const roadGeometry = new THREE.BufferGeometry();
+  roadGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  roadGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
+  roadGeometry.setIndex(indices);
+  roadGeometry.computeVertexNormals();
+  const road = new THREE.Mesh(roadGeometry, concrete);
+  road.name = 'Aged concrete deck of former Monza oval';
+  road.castShadow = true;
+  road.receiveShadow = true;
+  parent.add(road);
+
+  const slabVertices = [];
+  const slabIndices = [];
+  const pushSlab = (a, b, c, d) => {
+    const k = slabVertices.length / 3;
+    slabVertices.push(...a, ...b, ...c, ...d);
+    slabIndices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+  };
+  for (let i = 0; i < divisions; i++) {
+    const x0 = -43 + 86 * i / divisions;
+    const x1 = -43 + 86 * (i + 1) / divisions;
+    for (let j = 0; j < 2; j++) {
+      const w0 = width * (j - .5), w1 = width * (j + .5);
+      pushSlab(
+        [x0, deckY(x0, w0) - 1.0, deckZ(x0) + w0],
+        [x1, deckY(x1, w0) - 1.0, deckZ(x1) + w0],
+        [x0, deckY(x0, w1) - 1.0, deckZ(x0) + w1],
+        [x1, deckY(x1, w1) - 1.0, deckZ(x1) + w1],
+      );
+    }
+    for (const w of [-width / 2, width / 2]) {
+      pushSlab(
+        [x0, deckY(x0, w), deckZ(x0) + w],
+        [x1, deckY(x1, w), deckZ(x1) + w],
+        [x0, deckY(x0, w) - 1, deckZ(x0) + w],
+        [x1, deckY(x1, w) - 1, deckZ(x1) + w],
+      );
+    }
+  }
+  const slabGeometry = new THREE.BufferGeometry();
+  slabGeometry.setAttribute('position', new THREE.Float32BufferAttribute(slabVertices, 3));
+  slabGeometry.setIndex(slabIndices);
+  slabGeometry.computeVertexNormals();
+  const slab = new THREE.Mesh(slabGeometry, underside);
+  slab.name = 'Deep weathered concrete overpass soffit';
+  slab.castShadow = true;
+  parent.add(slab);
+
+  // Two pairs of piers leave more than 18 m from the modern centreline.
+  parent.updateWorldMatrix(true, false);
+  for (const x of [-33, -19.5, 19.5, 33]) {
+    const z = deckZ(x);
+    for (const w of [-3.9, 3.9]) {
+      const worldFoot = parent.localToWorld(new THREE.Vector3(x, 0, z + w));
+      const base = terrainHeightAt(worldFoot.x, worldFoot.z) - parent.position.y - .25;
+      const height = deckY(x, w) - 1.15 - base;
+      if (height < 2) continue;
+      const pier = new THREE.Mesh(new THREE.BoxGeometry(1.25, height, 1.35), underside);
+      pier.position.set(x, base + height / 2, z + w);
+      pier.castShadow = true;
+      pier.receiveShadow = true;
+      parent.add(pier);
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(2.25, .35, 2.25), underside);
+      pad.position.set(x, base + .13, z + w);
+      parent.add(pad);
+    }
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(2.15, .52, width - .35), underside);
+    cap.position.set(x, deckY(x, 0) - 1.27, z);
+    cap.castShadow = true;
+    parent.add(cap);
+  }
+
+  const railPoints = [];
+  const crackPoints = [];
+  const postTransforms = [];
+  for (const side of [-1, 1]) {
+    const w = side * (width / 2 + .15);
+    for (let i = 0; i < 29; i++) {
+      const x0 = -42 + 84 * i / 28;
+      if (i < 28) {
+        const x1 = -42 + 84 * (i + 1) / 28;
+        for (const h of [.65, 1.2]) railPoints.push(
+          x0, deckY(x0, w) + h, deckZ(x0) + w,
+          x1, deckY(x1, w) + h, deckZ(x1) + w,
+        );
+      }
+      postTransforms.push([x0, deckY(x0, w) + .62, deckZ(x0) + w]);
+    }
+  }
+  for (const x of [-37, -30, -19, -7, 5, 17, 28, 38]) {
+    const w0 = -width * .38, w1 = width * .31;
+    crackPoints.push(x, deckY(x, w0) + .022, deckZ(x) + w0,
+      x + 1.25, deckY(x + 1.25, w1) + .022, deckZ(x + 1.25) + w1);
+  }
+  const railsGeometry = new THREE.BufferGeometry();
+  railsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(railPoints, 3));
+  const rails = new THREE.LineSegments(railsGeometry, new THREE.LineBasicMaterial({ color: 0x626966, transparent: true, opacity: .85 }));
+  rails.name = 'Guardrails on former oval bridge';
+  parent.add(rails);
+  const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(.12, 1.3, .12), railMaterial, postTransforms.length);
+  const dummy = new THREE.Object3D();
+  postTransforms.forEach(([x, y, z], i) => {
+    dummy.position.set(x, y, z);
+    dummy.updateMatrix();
+    posts.setMatrixAt(i, dummy.matrix);
+  });
+  posts.instanceMatrix.needsUpdate = true;
+  posts.name = 'Old oval bridge rail posts';
+  parent.add(posts);
+  const cracksGeometry = new THREE.BufferGeometry();
+  cracksGeometry.setAttribute('position', new THREE.Float32BufferAttribute(crackPoints, 3));
+  const cracks = new THREE.LineSegments(cracksGeometry, new THREE.LineBasicMaterial({ color: 0x535952, transparent: true, opacity: .34 }));
+  cracks.name = 'Subtle age cracks in oval concrete';
+  parent.add(cracks);
+}
+
+function addHistoricSouthBanking(THREE, parent, terrainHeightAt) {
+  const upper = new THREE.MeshStandardMaterial({ color: 0xb5b4a9, vertexColors: true, roughness: 1, side: THREE.DoubleSide });
+  const face = new THREE.MeshStandardMaterial({ color: 0x777d73, roughness: 1, side: THREE.DoubleSide });
+  const positions = [];
+  const colours = [];
+  const indices = [];
+  const retaining = [];
+  const retainingIndices = [];
+  parent.updateWorldMatrix(true, false);
+  const centerZ = x => -.0025 * x * x;
+  const ground = (x, z) => {
+    const p = parent.localToWorld(new THREE.Vector3(x, 0, z));
+    return terrainHeightAt(p.x, p.z) - parent.position.y;
+  };
+  const height = (x, w) => {
+    const taper = Math.max(0, 1 - Math.pow(Math.abs(x) / 78, 2));
+    return ground(x, centerZ(x) + w) + .48 + (w + 7.5) / 15 * 6.2 * Math.sqrt(taper);
+  };
+  const segments = 30;
+  for (let i = 0; i <= segments; i++) {
+    const x = -78 + 156 * i / segments;
+    for (let j = 0; j <= 5; j++) {
+      const w = -7.5 + 15 * j / 5;
+      positions.push(x, height(x, w), centerZ(x) + w);
+      const patina = .78 + .085 * Math.sin(x * .23 + j * 1.9) + .04 * Math.cos(x * .54 - j);
+      colours.push(patina, patina * .99, patina * .96);
+      if (i < segments && j < 5) {
+        const a = i * 6 + j;
+        indices.push(a, a + 1, a + 6, a + 1, a + 7, a + 6);
+      }
+    }
+    const z = centerZ(x) + 7.5;
+    retaining.push(x, height(x, 7.5), z, x, ground(x, z) - .1, z);
+    if (i < segments) {
+      const k = i * 2;
+      retainingIndices.push(k, k + 2, k + 1, k + 1, k + 2, k + 3);
+    }
+  }
+  const roadGeometry = new THREE.BufferGeometry();
+  roadGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  roadGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
+  roadGeometry.setIndex(indices);
+  roadGeometry.computeVertexNormals();
+  const oldRoad = new THREE.Mesh(roadGeometry, upper);
+  oldRoad.name = 'Curved and steeply banked 1955 concrete roadway';
+  oldRoad.receiveShadow = true;
+  parent.add(oldRoad);
+  const faceGeometry = new THREE.BufferGeometry();
+  faceGeometry.setAttribute('position', new THREE.Float32BufferAttribute(retaining, 3));
+  faceGeometry.setIndex(retainingIndices);
+  faceGeometry.computeVertexNormals();
+  const wall = new THREE.Mesh(faceGeometry, face);
+  wall.name = 'Weathered edge of southern banking';
+  wall.castShadow = true;
+  parent.add(wall);
+}
+
 function boardTexture(THREE, metres) {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
@@ -295,36 +486,6 @@ function boardTexture(THREE, metres) {
   ctx.fillText(String(metres), 128, 179, 241);
   ctx.font = '700 26px Arial, sans-serif';
   ctx.fillText('METRI', 128, 276);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 8;
-  return texture;
-}
-
-function portalTexture(THREE) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 1024;
-  canvas.height = 128;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#ac1f27';
-  ctx.fillRect(0, 0, 1024, 128);
-  ctx.fillStyle = '#f7f3ec';
-  ctx.fillRect(0, 0, 1024, 8);
-  ctx.fillRect(0, 120, 1024, 8);
-  for (const baseX of [22, 890]) {
-    for (let row = 0; row < 3; row++) {
-      for (let col = 0; col < 3; col++) {
-        if ((row + col) % 2 === 0) ctx.fillRect(baseX + col * 30, 19 + row * 30, 30, 30);
-      }
-    }
-  }
-  ctx.fillStyle = '#ffffff';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = '900 79px Arial, sans-serif';
-  ctx.fillText('MONZA', 512, 62);
-  ctx.font = '700 18px Arial, sans-serif';
-  ctx.fillText('AUTODROMO NAZIONALE', 512, 108);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 8;

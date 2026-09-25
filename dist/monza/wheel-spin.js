@@ -11,14 +11,26 @@ const ROTATING_PARTS = new Set([
   'Wheel V4 satin black forged spokes',
 ]);
 
+// Dimensions measured from the tyre mesh in the RB22 GLB. Its lowest rubber
+// vertex is at model Y=0, so the chassis origin rests at road height on level
+// asphalt. Race placement uses the same axle dimensions as the wheel pivots.
+export const WHEEL_GEOMETRY = Object.freeze({
+  frontX: -1.55,
+  rearX: 1.70,
+  frontZ: .77,
+  rearZ: .78,
+  centerY: .36,
+  radius: .36,
+});
+
 const WHEELS = [
-  { key: 'front-left', x: -1.55, y: 0.36, z: -0.77 },
-  { key: 'front-right', x: -1.55, y: 0.36, z: 0.77 },
-  { key: 'rear-left', x: 1.70, y: 0.36, z: -0.78 },
-  { key: 'rear-right', x: 1.70, y: 0.36, z: 0.78 },
+  { key: 'front-left', x: WHEEL_GEOMETRY.frontX, y: WHEEL_GEOMETRY.centerY, z: -WHEEL_GEOMETRY.frontZ },
+  { key: 'front-right', x: WHEEL_GEOMETRY.frontX, y: WHEEL_GEOMETRY.centerY, z: WHEEL_GEOMETRY.frontZ },
+  { key: 'rear-left', x: WHEEL_GEOMETRY.rearX, y: WHEEL_GEOMETRY.centerY, z: -WHEEL_GEOMETRY.rearZ },
+  { key: 'rear-right', x: WHEEL_GEOMETRY.rearX, y: WHEEL_GEOMETRY.centerY, z: WHEEL_GEOMETRY.rearZ },
 ];
 
-const TYRE_RADIUS = 0.36;
+const TYRE_RADIUS = WHEEL_GEOMETRY.radius;
 const FULL_TURN = Math.PI * 2;
 
 export function bindWheelSpin(THREE, car) {

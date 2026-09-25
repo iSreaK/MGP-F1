@@ -4,6 +4,8 @@ import { GLTFLoader } from '../vendor/three/examples/jsm/loaders/GLTFLoader.js';
 import { createMonzaWorld } from './world.js';
 import { createRaceController } from './race-motion.js';
 import { bindWheelSpin } from './wheel-spin.js';
+import { createMonzaSky } from './sky.js';
+import { createMonzaWeather } from './weather.js';
 
 const canvas = document.querySelector('#scene');
 const atlas = document.querySelector('#atlas');
@@ -23,6 +25,7 @@ const raceLapTime = document.querySelector('#race-lap-time');
 const raceLastLap = document.querySelector('#race-last-lap');
 const raceSection = document.querySelector('#race-section');
 const cameraModeButton = document.querySelector('#camera-mode');
+const weatherButton = document.querySelector('#weather');
 const gestureHint = document.querySelector('.gesture-hint');
 const exploreHint = gestureHint.innerHTML;
 
@@ -53,7 +56,8 @@ if (renderer) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x9cbdd0);
-  scene.fog = new THREE.Fog(0xa9c0c1, 3600, 7600);
+  scene.fog = new THREE.Fog(0xbfd3d4, 3600, 7600);
+  const sky = createMonzaSky(THREE, scene);
 
   const camera = new THREE.PerspectiveCamera(41, 1, 0.5, 6500);
   const controls = new OrbitControls(camera, canvas);
@@ -68,7 +72,8 @@ if (renderer) {
   controls.zoomSpeed = 0.8;
   controls.rotateSpeed = 0.7;
 
-  scene.add(new THREE.HemisphereLight(0xf0f8ff, 0x63745c, 1.55));
+  const ambient = new THREE.HemisphereLight(0xf0f8ff, 0x63745c, 1.55);
+  scene.add(ambient);
   const sun = new THREE.DirectionalLight(0xffebce, 2.7);
   const sunOffset = new THREE.Vector3(-980, 780, 1080);
   sun.position.copy(sunOffset);
@@ -81,7 +86,7 @@ if (renderer) {
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 3200;
   sun.shadow.bias = -0.00008;
-  sun.shadow.normalBias = 0.7;
+  sun.shadow.normalBias = 0.035;
   sun.target.position.set(0, 0, 0);
   scene.add(sun, sun.target);
 
@@ -102,6 +107,8 @@ if (renderer) {
   resize();
 
   let world;
+  let weather;
+  let wetMode = false;
   let initialPosition = new THREE.Vector3();
   let initialTarget = new THREE.Vector3();
   let cameraMove = null;
@@ -211,6 +218,8 @@ if (renderer) {
 
   try {
     world = createMonzaWorld(THREE, scene);
+    weather = createMonzaWeather(THREE, scene, world.curve, world.trackMaterial);
+    if (weatherButton) weatherButton.disabled = false;
     const center = world.bounds.getCenter(new THREE.Vector3());
     const size = world.bounds.getSize(new THREE.Vector3());
     const span = Math.max(size.x, size.z);
@@ -232,19 +241,17 @@ if (renderer) {
     const carDirection = world.curve.getTangentAt(carU).setY(0).normalize();
     const carSide = new THREE.Vector3(carDirection.z, 0, -carDirection.x);
     new GLTFLoader().load('../rb22_max_verstappen_2026.glb', ({ scene: car }) => {
-      car.position.copy(carPoint).addScaledVector(carSide, -2.35);
-      car.position.y = carPoint.y + .04;
-      car.rotation.y = Math.atan2(carDirection.z, -carDirection.x);
       car.traverse(object => {
         if (object.isMesh) object.castShadow = true;
       });
       scene.add(car);
-      focusSun(car.position);
       raceController = createRaceController(THREE, world.curve, car, {
         startU: carU,
         laneOffset: -2.35,
-        carY: .34,
+        trackHeightAt: world.trackHeightAt,
       });
+      focusSun(car.position);
+      raceController.setWet(wetMode);
       const wheels = bindWheelSpin(THREE, car);
       if (wheels.enabled) wheelAnimator = wheels;
       else wheels.dispose();
@@ -314,6 +321,19 @@ if (renderer) {
     cameraModeButton.textContent = `Caméra · ${cameraModes[cameraMode]}`;
     cameraModeButton.setAttribute('aria-label', `Vue de course : ${cameraModes[cameraMode]}. Changer de caméra`);
     if (racing) updateCameraHint();
+  });
+  weatherButton?.addEventListener('click', () => {
+    if (!weather) return;
+    wetMode = !wetMode;
+    weather.setWet(wetMode);
+    raceController?.setWet(wetMode);
+    weatherButton.textContent = wetMode ? 'Météo · Pluie' : 'Météo · Sec';
+    weatherButton.setAttribute('aria-pressed', String(wetMode));
+    weatherButton.setAttribute('aria-label', wetMode ? 'Désactiver la pluie et sécher la piste' : 'Activer la pluie et la piste mouillée');
+    sun.intensity = wetMode ? 1.65 : 2.7;
+    ambient.intensity = wetMode ? 1.28 : 1.55;
+    scene.fog.color.set(wetMode ? 0x9dabb4 : 0xbfd3d4);
+    sky.setWet(wetMode);
   });
   window.addEventListener('keydown', event => {
     if (event.key.toLowerCase() !== 'c' || !raceStarted || event.repeat) return;
@@ -392,6 +412,8 @@ if (renderer) {
       const distance = camera.position.distanceTo(controls.target);
       world.overviewAccent.opacity = Math.max(0, Math.min(.82, (distance - 950) / 1900));
     }
+    sky.follow(camera.position);
+    weather?.update(dt, camera);
     renderer.render(scene, camera);
   }
   requestAnimationFrame(animate);
