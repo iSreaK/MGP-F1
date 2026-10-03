@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#080d16" />
     <title>Monoplaces 2026 · Garage 3D interactif</title>
-    <meta name="description" content="Explorez en 3D les monoplaces 2026 de Max Verstappen, Lewis Hamilton, Pierre Gasly, Lando Norris, Kimi Antonelli et Gabriel Bortoleto, avec leurs modèles téléchargeables." />
+    <meta name="description" content="Explorez en 3D les monoplaces 2026 et leurs pilotes, avec des modèles téléchargeables et le circuit de Monza." />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23080d16'/%3E%3Cpath d='M10 42 35 15h12L26 42Z' fill='%23ffcc25'/%3E%3Cpath d='M25 48 46 23l8 8-16 17Z' fill='%23e31d2e'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./styles.css" />
     <script type="importmap">
@@ -30,46 +30,23 @@
           </div>
         </div>
         <div class="masthead-actions">
-          <a class="scene-link" href="./monza/">Explorer Monza <span aria-hidden="true">↗</span></a>
-          <span class="file-pill">ASSET WEB <span class="pill-dot"></span> GLB</span>
+          <a class="scene-link" href="./monza/">Course de Monza <span aria-hidden="true">↗</span></a>
         </div>
       </header>
 
-      <section class="garage" data-count="6" aria-label="Garage des monoplaces 2026">
-        <p class="garage-heading">LES MONOPLACES <span>06 / 06</span></p>
-        <nav class="car-switcher" aria-label="Choisir une monoplace">
-          <button class="car-choice is-active" type="button" data-car-choice="redbull" aria-pressed="true">
-            <span class="car-choice-team">01 / RED BULL RACING</span>
-            <span class="car-choice-model">RB22 <span aria-hidden="true">↗</span></span>
-            <span class="car-choice-driver">Max Verstappen · N° 3</span>
-          </button>
-          <button class="car-choice" type="button" data-car-choice="ferrari" aria-pressed="false">
-            <span class="car-choice-team">02 / SCUDERIA FERRARI</span>
-            <span class="car-choice-model">SF-26 <span aria-hidden="true">↗</span></span>
-            <span class="car-choice-driver">Lewis Hamilton · N° 44</span>
-          </button>
-          <button class="car-choice" type="button" data-car-choice="alpine" aria-pressed="false">
-            <span class="car-choice-team">03 / BWT ALPINE F1 TEAM</span>
-            <span class="car-choice-model">A526 <span aria-hidden="true">↗</span></span>
-            <span class="car-choice-driver">Pierre Gasly · N° 10</span>
-          </button>
-          <button class="car-choice" type="button" data-car-choice="mclaren" aria-pressed="false">
-            <span class="car-choice-team">04 / MCLAREN F1 TEAM</span>
-            <span class="car-choice-model">MCL40 <span aria-hidden="true">↗</span></span>
-            <span class="car-choice-driver">Lando Norris · N° 1</span>
-          </button>
-          <button class="car-choice" type="button" data-car-choice="mercedes" aria-pressed="false">
-            <span class="car-choice-team">05 / MERCEDES-AMG F1</span>
-            <span class="car-choice-model">W17 <span aria-hidden="true">↗</span></span>
-            <span class="car-choice-driver">Kimi Antonelli · N° 12</span>
-          </button>
-          <button class="car-choice" type="button" data-car-choice="audi" aria-pressed="false">
-            <span class="car-choice-team">06 / AUDI REVOLUT F1 TEAM</span>
-            <span class="car-choice-model">R26 <span aria-hidden="true">↗</span></span>
-            <span class="car-choice-driver">Gabriel Bortoleto · N° 5</span>
-          </button>
-        </nav>
-      </section>
+      <details class="garage" open>
+        <summary class="garage-toggle">
+          <span class="garage-toggle-copy"><span class="garage-heading">GARAGE 2026 <span id="garage-count">22 voitures</span></span><strong id="garage-current">Max Verstappen · RB22</strong></span>
+          <span class="garage-toggle-action" aria-hidden="true"><span id="garage-toggle-label">Choisir</span><span>⌄</span></span>
+        </summary>
+        <div class="garage-panel">
+          <label class="garage-search-label" for="garage-search">Rechercher une voiture</label>
+          <input id="garage-search" class="garage-search" type="search" placeholder="Pilote, écurie ou modèle" autocomplete="off" />
+          <p class="garage-results" id="garage-results" role="status" aria-live="polite">22 voitures · 11 écuries</p>
+          <nav class="car-switcher" aria-label="Choisir une monoplace"></nav>
+          <p class="garage-empty" id="garage-empty" hidden>Aucune voiture trouvée. Essayez un autre nom.</p>
+        </div>
+      </details>
 
       <p class="driver-label" id="driver-label"><span>PILOTE / 03</span> MAX VERSTAPPEN</p>
 
@@ -88,14 +65,18 @@
       </div>
 
       <footer class="toolbar">
-        <div class="gesture-hint">
-          <span class="gesture-icon" aria-hidden="true">↔</span>
-          <span>Glisser pour tourner <i>·</i> Molette pour zoomer</span>
+        <div class="car-pager" aria-label="Parcourir les voitures">
+          <button type="button" id="previous-car" aria-label="Voiture précédente"><span aria-hidden="true">‹</span><span class="pager-button-text">Précédente</span></button>
+          <span class="car-pager-current"><span id="car-position">01 / 22</span><strong id="pager-driver">Max Verstappen</strong></span>
+          <button type="button" id="next-car" aria-label="Voiture suivante"><span class="pager-button-text">Suivante</span><span aria-hidden="true">›</span></button>
         </div>
-        <div class="toolbar-actions">
-          <button type="button" id="spin" disabled aria-pressed="false">Rotation auto</button>
-          <button type="button" id="reset" disabled>Vue initiale</button>
-          <a id="download-model" href="./rb22_max_verstappen_2026.glb?v=20260924-2" download>Télécharger le GLB <span aria-hidden="true">↗</span></a>
+        <div class="toolbar-right">
+          <p class="gesture-hint"><span class="gesture-icon" aria-hidden="true">↔</span><span class="hint-desktop">Glisser pour tourner <i>·</i> Molette pour zoomer</span><span class="hint-touch">Glissez pour tourner <i>·</i> Pincez pour zoomer</span></p>
+          <div class="toolbar-actions">
+            <button type="button" id="spin" disabled aria-pressed="false">Rotation auto</button>
+            <button type="button" id="reset" disabled>Vue initiale</button>
+            <a id="download-model" href="./rb22_max_verstappen_2026.glb?v=20260924-2" download>Télécharger le modèle 3D <span aria-hidden="true">↗</span></a>
+          </div>
         </div>
       </footer>
     </main>

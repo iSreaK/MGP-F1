@@ -1,4 +1,4 @@
-import { GRID_LANE_CENTER, MONZA_FINISH_BEFORE_START_METERS } from './grid-details.js';
+import { GRID_LANE_CENTER, PIT_START_LANE_CENTER, MONZA_FINISH_BEFORE_START_METERS } from './grid-details.js';
 import { racingLineOffset } from './race-motion.js';
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
@@ -40,9 +40,12 @@ export function computeReplayPlacements(cars, gridU, trackGap, sourceLapMeters =
   for (const car of ordered) {
     const renderedMetres = car.progressMeters * trackGap.lengthMeters / sourceLapMeters;
     const u = trackGap.behind(gridU, -renderedMetres);
-    const lane = car.gridPosition % 2 ? -GRID_LANE_CENTER : GRID_LANE_CENTER;
+    const lane = car.pitLaneStart ? PIT_START_LANE_CENTER
+      : car.gridPosition % 2 ? -GRID_LANE_CENTER : GRID_LANE_CENTER;
     const race = racingLineOffset(u);
-    const startBlend = smoothstep(car.progressMeters / 120);
+    const startBlend = car.pitLaneStart
+      ? smoothstep((car.progressMeters - 130) / 180)
+      : smoothstep(car.progressMeters / 120);
     placements.set(car.number, { u, offset: lane + (race - lane) * startBlend });
   }
 

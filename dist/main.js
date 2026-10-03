@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from './vendor/three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from './vendor/three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from './vendor/three/examples/jsm/environments/RoomEnvironment.js';
+import { carCatalog, carByKey } from './car-catalog.js';
 
 const canvas = document.querySelector('#scene');
 const viewer = document.querySelector('#viewer');
@@ -16,52 +17,114 @@ const resetButton = document.querySelector('#reset');
 const returnButton = document.querySelector('#status-return');
 const downloadLink = document.querySelector('#download-model');
 const monzaLink = document.querySelector('.scene-link');
-const carChoices = [...document.querySelectorAll('[data-car-choice]')];
+const cars = carByKey;
+const garage = document.querySelector('.garage');
+const garageSearch = document.querySelector('#garage-search');
+const garageResults = document.querySelector('#garage-results');
+const garageEmpty = document.querySelector('#garage-empty');
+const previousButton = document.querySelector('#previous-car');
+const nextButton = document.querySelector('#next-car');
+const switcher = document.querySelector('.car-switcher');
+const teams = new Map();
+for (const car of carCatalog) {
+  if (!teams.has(car.teamKey)) teams.set(car.teamKey, []);
+  teams.get(car.teamKey).push(car);
+}
+switcher.innerHTML = [...teams.entries()].map(([teamKey, teamCars]) => `
+  <section class="team-group" data-team-group="${teamKey}">
+    <h2 class="team-heading">${teamCars[0].team}</h2>
+    ${teamCars.map(car => `
+      <button class="car-choice" type="button" data-car-choice="${car.key}" data-team="${car.teamKey}" aria-pressed="false">
+        <span class="car-choice-number">N° ${car.number}</span>
+        <span class="car-choice-person"><strong>${car.driverName}</strong><small>${car.name}</small></span>
+        <span class="car-choice-arrow" aria-hidden="true">›</span>
+      </button>`).join('')}
+  </section>`).join('');
+document.querySelector('#garage-count').textContent = `${carCatalog.length} voitures`;
+const carChoices = [...switcher.querySelectorAll('[data-car-choice]')];
+const teamGroups = [...switcher.querySelectorAll('[data-team-group]')];
+const narrowScreen = window.matchMedia('(max-width: 760px)');
+if (narrowScreen.matches) garage.open = false;
+function updateGarageToggleLabel() {
+  document.querySelector('#garage-toggle-label').textContent = garage.open ? 'Fermer' : 'Choisir';
+}
+updateGarageToggleLabel();
 
-const cars = {
-  redbull: {
-    name: 'RB22', team: 'RED BULL RACING', driver: 'MAX VERSTAPPEN', driverName: 'Max Verstappen', number: '03',
-    url: './rb22_max_verstappen_2026.glb?v=20260924-2',
-  },
-  ferrari: {
-    name: 'SF-26', team: 'SCUDERIA FERRARI', driver: 'LEWIS HAMILTON', driverName: 'Lewis Hamilton', number: '44',
-    url: './ferrari_sf26_hamilton_44.glb?v=20260925-4',
-  },
-  alpine: {
-    name: 'A526', team: 'BWT ALPINE F1 TEAM', driver: 'PIERRE GASLY', driverName: 'Pierre Gasly', number: '10',
-    url: './alpine_a526_gasly_10.glb?v=20260925-2',
-  },
-  mclaren: {
-    name: 'MCL40', team: 'MCLAREN FORMULA 1 TEAM', driver: 'LANDO NORRIS', driverName: 'Lando Norris', number: '1',
-    url: './mclaren_mcl40_norris_1.glb?v=20260925-2',
-  },
-  mercedes: {
-    name: 'W17', team: 'MERCEDES-AMG PETRONAS F1 TEAM', driver: 'KIMI ANTONELLI', driverName: 'Kimi Antonelli', number: '12',
-    url: './mercedes_w17_antonelli_12.glb?v=20260925-2',
-  },
-  audi: {
-    name: 'R26', team: 'AUDI REVOLUT F1 TEAM', driver: 'GABRIEL BORTOLETO', driverName: 'Gabriel Bortoleto', number: '5',
-    url: './audi_r26_bortoleto_5.glb?v=20260925-1',
-  },
-};
+function normalizeSearch(value) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr').trim();
+}
+
+function filterGarage() {
+  const query = normalizeSearch(garageSearch.value);
+  switcher.scrollTop = 0;
+  let visibleCars = 0;
+  let visibleTeams = 0;
+  for (const group of teamGroups) {
+    const teamMatches = normalizeSearch(group.querySelector('.team-heading').textContent).includes(query);
+    let groupCars = 0;
+    for (const choice of group.querySelectorAll('.car-choice')) {
+      const car = cars[choice.dataset.carChoice];
+      const matches = teamMatches || normalizeSearch(`${car.driverName} ${car.name} ${car.number}`).includes(query);
+      choice.hidden = !matches;
+      if (matches) groupCars++;
+    }
+    group.hidden = groupCars === 0;
+    visibleCars += groupCars;
+    if (groupCars) visibleTeams++;
+  }
+  garageResults.textContent = `${visibleCars} voiture${visibleCars === 1 ? '' : 's'} · ${visibleTeams} écurie${visibleTeams === 1 ? '' : 's'}`;
+  garageEmpty.hidden = visibleCars !== 0;
+}
+
+garageSearch.addEventListener('input', filterGarage);
+garageSearch.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && garageSearch.value) {
+    garageSearch.value = '';
+    filterGarage();
+  }
+});
+function revealActiveChoice() {
+  const choice = switcher.querySelector('.car-choice.is-active');
+  if (!choice || !garage.open) return;
+  const list = switcher.getBoundingClientRect();
+  const item = choice.getBoundingClientRect();
+  switcher.scrollTop += item.top - list.top - Math.max(8, (list.height - item.height) / 2);
+}
+garage.addEventListener('toggle', () => {
+  updateGarageToggleLabel();
+  garage.scrollTop = 0;
+  if (garage.open && !garageSearch.value) requestAnimationFrame(revealActiveChoice);
+});
+
+function closeMobileGarage() {
+  if (narrowScreen.matches) garage.open = false;
+}
 
 function updateCarUI(key) {
   const car = cars[key];
-  viewer.dataset.car = key;
+  const position = carCatalog.indexOf(car);
+  viewer.dataset.car = car.teamKey;
   document.querySelector('#team-name').textContent = car.team;
   document.querySelector('#model-name').textContent = car.name;
-  document.querySelector('#car-number').textContent = car.number;
+  document.querySelector('#car-number').textContent = car.displayNumber;
   document.querySelector('#driver-label').innerHTML = `<span>PILOTE / ${car.number}</span> ${car.driver}`;
+  document.querySelector('#garage-current').textContent = `${car.driverName} · ${car.name}`;
+  document.querySelector('#pager-driver').textContent = car.driverName;
+  document.querySelector('#car-position').textContent = `${String(position + 1).padStart(2, '0')} / ${String(carCatalog.length).padStart(2, '0')}`;
+  previousButton.setAttribute('aria-label', `Voiture précédente : ${carCatalog[(position - 1 + carCatalog.length) % carCatalog.length].driverName}`);
+  nextButton.setAttribute('aria-label', `Voiture suivante : ${carCatalog[(position + 1) % carCatalog.length].driverName}`);
   canvas.setAttribute('aria-label', `Modèle 3D de la ${car.name} de ${car.driverName}`);
-  document.title = `${car.name} 2026 · Garage 3D interactif`;
+  document.title = `${car.driverName} · ${car.name} 2026 · Garage 3D`;
   downloadLink.href = new URL(car.url, import.meta.url).href;
-  downloadLink.setAttribute('aria-label', `Télécharger le modèle 3D ${car.name} de ${car.driver}`);
+  downloadLink.setAttribute('aria-label', `Télécharger le modèle 3D ${car.name} de ${car.driverName} au format GLB`);
   monzaLink.href = key === 'redbull' ? './monza/' : `./monza/?car=${encodeURIComponent(key)}`;
+  monzaLink.setAttribute('aria-label', `Voir la ${car.name} de ${car.driverName} sur le circuit de Monza`);
   for (const choice of carChoices) {
     const selected = choice.dataset.carChoice === key;
     choice.classList.toggle('is-active', selected);
     choice.setAttribute('aria-pressed', String(selected));
   }
+  if (garage.open && !garageSearch.value) revealActiveChoice();
 }
 
 function fail(message, detail) {
@@ -313,9 +376,26 @@ function startViewer() {
 
   carChoices.forEach((choice) => {
     choice.addEventListener('click', () => {
+      if (garageSearch.value) {
+        garageSearch.value = '';
+        filterGarage();
+      }
       if (choice.dataset.carChoice !== activeKey) loadCar(choice.dataset.carChoice);
+      closeMobileGarage();
     });
   });
+  function stepCar(direction) {
+    const currentIndex = Math.max(0, carCatalog.findIndex(car => car.key === activeKey));
+    const nextIndex = (currentIndex + direction + carCatalog.length) % carCatalog.length;
+    if (garageSearch.value) {
+      garageSearch.value = '';
+      filterGarage();
+    }
+    loadCar(carCatalog[nextIndex].key);
+    closeMobileGarage();
+  }
+  previousButton.addEventListener('click', () => stepCar(-1));
+  nextButton.addEventListener('click', () => stepCar(1));
   returnButton.addEventListener('click', () => status.classList.add('is-hidden'));
   const initialKey = new URLSearchParams(location.search).get('car');
   loadCar(cars[initialKey] ? initialKey : 'redbull');

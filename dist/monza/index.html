@@ -25,7 +25,7 @@
             <h1>MONZA <span>/ 3D</span></h1>
           </div>
         </div>
-        <nav aria-label="Pages du site"><a class="return-link" href="../" aria-label="Retour au garage des monoplaces"><span aria-hidden="true" class="return-arrow">←</span><span class="return-text">Le garage</span></a></nav>
+        <nav aria-label="Pages du site"><a class="return-link" href="../" aria-label="Retour aux garages des monoplaces"><span aria-hidden="true" class="return-arrow">←</span><span class="return-text">Tous les garages</span></a></nav>
       </header>
 
       <section class="circuit-data" aria-label="Informations sur le circuit">
@@ -47,19 +47,20 @@
         <p class="race-section"><span>SECTEUR /</span><strong id="race-section">Rettifilo Tribune</strong></p>
       </section>
 
-      <section class="replay-panel" id="replay-panel" aria-label="Replay du Grand Prix d'Italie 2026" hidden>
+      <section class="replay-panel" id="replay-panel" tabindex="-1" aria-label="Replay du Grand Prix d'Italie 2026" hidden>
         <div class="replay-head">
           <div>
             <p class="replay-kicker">REPLAY HISTORIQUE</p>
             <h2>MONZA <span>2026</span></h2>
           </div>
-          <div class="replay-head-actions"><span class="replay-badge">6 VOITURES</span><button type="button" id="replay-panel-toggle" class="replay-panel-toggle" aria-expanded="true" aria-label="Réduire le panneau du replay">−</button></div>
+          <div class="replay-head-actions"><span class="replay-badge">VOITURES EN CHARGEMENT</span><button type="button" id="replay-panel-toggle" class="replay-panel-toggle" aria-expanded="true" aria-label="Réduire les détails du replay">Réduire</button></div>
         </div>
         <p class="replay-status" id="replay-status" role="status" aria-live="polite">Chargement des données de course…</p>
+        <p class="replay-guide">Lecture lance la course · le curseur choisit un moment · le classement change la voiture suivie.</p>
         <div class="replay-live-speed"><strong id="replay-speed-kph">0</strong><span>KM/H · voiture suivie</span></div>
         <div class="replay-controls">
           <button type="button" id="replay-toggle" class="replay-toggle" aria-label="Lire le replay">▶ Lecture</button>
-          <label for="replay-speed">Vitesse</label>
+          <label for="replay-speed">Lecture</label>
           <select id="replay-speed" aria-label="Vitesse de lecture du replay">
             <option value="1">×1</option>
             <option value="4">×4</option>
@@ -69,12 +70,12 @@
         </div>
         <button type="button" id="replay-skip-pause" class="replay-skip-pause" hidden>Passer l’interruption →</button>
         <div class="replay-timeline-head">
-          <label for="replay-timeline">TEMPS DE COURSE</label>
+          <label for="replay-timeline">MOMENT DU GRAND PRIX</label>
           <output id="replay-clock" for="replay-timeline">00:00 / 00:00</output>
         </div>
-        <input type="range" id="replay-timeline" min="0" max="1" value="0" step="0.1" aria-label="Avancer dans le replay" />
+        <input type="range" id="replay-timeline" min="0" max="1" value="0" step="any" aria-label="Avancer dans le replay" />
         <div class="replay-driver-row">
-          <label for="replay-driver">SUIVRE</label>
+          <label for="replay-driver">CAMÉRA SUR</label>
           <select id="replay-driver" aria-label="Voiture suivie par la caméra">
             <option value="12">Antonelli · 12</option>
             <option value="3">Verstappen · 3</option>
@@ -84,15 +85,16 @@
             <option value="5">Bortoleto · 5</option>
           </select>
         </div>
+        <a class="replay-garage-link" id="replay-garage-link" href="../">Voir cette monoplace au garage →</a>
         <div class="replay-telemetry" aria-label="Télémétrie de la voiture suivie">
-          <div><span>POS. OFF.</span><strong id="replay-official-position">—</strong></div>
-          <div><span>RAPPORT</span><strong id="replay-gear">—</strong></div>
-          <div><span>GAZ</span><strong id="replay-throttle">—</strong></div>
+          <div><span>POSITION</span><strong id="replay-official-position">—</strong></div>
+          <div><span title="Rapport de boîte engagé">RAPPORT</span><strong id="replay-gear">—</strong></div>
+          <div><span>ACCÉL.</span><strong id="replay-throttle">—</strong></div>
           <div><span>FREIN</span><strong id="replay-brake">—</strong></div>
         </div>
-        <div class="replay-ranking-head"><h3>CLASSEMENT</h3><span>Parmi les 6 · rang officiel indiqué</span></div>
-        <ol class="replay-rankings" id="replay-rankings" aria-label="Classement des six voitures affichées"></ol>
-        <p class="replay-source">Positions longitudinales, chronos, vitesse et télémétrie historiques issus d’<a href="https://openf1.org/docs/" target="_blank" rel="noopener noreferrer">OpenF1</a> (source non officielle). Six voitures affichées ; rang officiel sur toute la grille. Trajectoire latérale et passages aux stands approximés en 3D ; retour aux stands sous drapeau rouge non représenté.</p>
+        <div class="replay-ranking-head"><h3>CLASSEMENT</h3><span>Position officielle · choisir une voiture à suivre</span></div>
+        <ol class="replay-rankings" id="replay-rankings" aria-label="Classement officiel des voitures affichées"></ol>
+        <p class="replay-source">Positions longitudinales, chronos, vitesse et télémétrie historiques issus d’<a href="https://openf1.org/docs/" target="_blank" rel="noopener noreferrer">OpenF1</a> (source non officielle). Rang officiel sur toute la grille. Trajectoire latérale et passages aux stands approximés en 3D ; retour aux stands sous drapeau rouge non représenté.</p>
       </section>
 
       <div class="loading" id="loading" role="status" aria-live="polite">
@@ -107,16 +109,21 @@
       <footer class="toolbar">
         <p class="gesture-hint">Glisser pour tourner <span>·</span> Molette ou pincement pour zoomer</p>
         <div class="control-panel">
-          <span class="control-label" aria-hidden="true">VUES &amp; SIMULATION <span>01 / MONZA</span></span>
+          <span class="control-label" aria-hidden="true">EXPLORER MONZA <span>01 / CIRCUIT</span></span>
+          <p class="control-help" id="control-help">Simulation libre : les voitures roulent automatiquement. Replay GP 2026 : revivez la course à partir des données historiques.</p>
           <div class="actions">
-            <button type="button" id="race" class="race-button" disabled aria-pressed="false">▶&nbsp; Course</button>
-            <button type="button" id="replay" class="replay-button" disabled aria-pressed="false">◷&nbsp; Replay GP 2026</button>
+            <div class="mode-actions" role="group" aria-label="Choisir un mode de course">
+              <button type="button" id="race" class="race-button" disabled aria-pressed="false" aria-describedby="control-help" title="Lancer une animation libre des voitures">▶&nbsp; Simulation libre</button>
+              <button type="button" id="replay" class="replay-button" disabled aria-pressed="false" aria-describedby="control-help" title="Revoir le Grand Prix 2026 avec les données de course">◷&nbsp; Replay GP 2026</button>
+            </div>
             <span class="action-divider" aria-hidden="true"></span>
-            <button type="button" id="overview" disabled>Vue générale</button>
-            <button type="button" id="grid" disabled>Départ</button>
-            <button type="button" id="flyover" disabled aria-pressed="false">Survol</button>
-            <button type="button" id="weather" class="weather-button" disabled aria-pressed="false" aria-label="Activer la pluie et la piste mouillée">Météo · Sec</button>
-            <button type="button" id="camera-mode" class="camera-button" hidden disabled>Caméra · Poursuite</button>
+            <div class="view-actions" role="group" aria-label="Explorer le circuit et la caméra">
+              <button type="button" id="overview" disabled title="Afficher l'ensemble du circuit">Circuit entier</button>
+              <button type="button" id="grid" disabled title="Afficher les voitures sur la grille de départ">Grille de départ</button>
+              <button type="button" id="flyover" disabled aria-pressed="false" title="Survoler automatiquement le circuit">Survol</button>
+              <button type="button" id="weather" class="weather-button" disabled aria-pressed="false" aria-label="Activer la pluie et la piste mouillée">Météo · Sec</button>
+              <button type="button" id="camera-mode" class="camera-button" aria-keyshortcuts="C" hidden disabled>Caméra · Poursuite</button>
+            </div>
           </div>
         </div>
       </footer>

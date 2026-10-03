@@ -9,6 +9,8 @@ export const GRID_SLOT_SPACING = 9.05;
 // Monza's control/finish line is 309 m before the separate start line (FIA).
 export const MONZA_FINISH_BEFORE_START_METERS = 309;
 export const GRID_LANE_CENTER = 2.72;
+// Centre of the modeled pit lane alongside the starting straight.
+export const PIT_START_LANE_CENTER = 17;
 
 export function addMonzaGridDetails(THREE, scene, curve, polyline, landmarks, trackY = .30) {
   const group = new THREE.Group();

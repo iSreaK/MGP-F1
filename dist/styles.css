@@ -73,6 +73,51 @@ button, a { -webkit-tap-highlight-color: transparent; }
     radial-gradient(ellipse 68% 65% at 50% 43%, #30343a 0%, #181e27 53%, #090d15 100%);
 }
 
+.viewer[data-car="racingbulls"] {
+  --accent: #a5d6ff;
+  --accent-strong: #4b9df1;
+  --accent-rgb: 76, 157, 241;
+  background:
+    radial-gradient(ellipse 53% 39% at 54% 69%, rgba(87, 159, 238, .17), transparent 77%),
+    radial-gradient(ellipse 68% 65% at 50% 43%, #1c3556 0%, #101c30 53%, #090d19 100%);
+}
+
+.viewer[data-car="haas"] {
+  --accent: #ff8e8e;
+  --accent-strong: #e54747;
+  --accent-rgb: 229, 71, 71;
+  background:
+    radial-gradient(ellipse 53% 39% at 54% 69%, rgba(225, 53, 56, .13), transparent 77%),
+    radial-gradient(ellipse 68% 65% at 50% 43%, #30323b 0%, #191d28 53%, #090d15 100%);
+}
+
+.viewer[data-car="williams"] {
+  --accent: #88c4ff;
+  --accent-strong: #397ddf;
+  --accent-rgb: 57, 125, 223;
+  background:
+    radial-gradient(ellipse 53% 39% at 54% 69%, rgba(38, 112, 218, .19), transparent 77%),
+    radial-gradient(ellipse 68% 65% at 50% 43%, #182f62 0%, #111c3b 53%, #080d1b 100%);
+}
+
+.viewer[data-car="cadillac"] {
+  --accent: #e3e9f0;
+  --accent-strong: #aebccc;
+  --accent-rgb: 174, 188, 204;
+  background:
+    radial-gradient(ellipse 53% 39% at 54% 69%, rgba(183, 194, 210, .13), transparent 77%),
+    radial-gradient(ellipse 68% 65% at 50% 43%, #293039 0%, #151b24 53%, #090d14 100%);
+}
+
+.viewer[data-car="astonmartin"] {
+  --accent: #97e1bd;
+  --accent-strong: #3cad83;
+  --accent-rgb: 60, 173, 131;
+  background:
+    radial-gradient(ellipse 53% 39% at 54% 69%, rgba(48, 160, 119, .16), transparent 77%),
+    radial-gradient(ellipse 68% 65% at 50% 43%, #183c39 0%, #112824 53%, #081611 100%);
+}
+
 .viewer::after {
   content: "";
   position: absolute;
@@ -171,51 +216,96 @@ h1 > span:last-child { color: #7e92aa; font-weight: 480; }
 .garage {
   position: absolute;
   z-index: 3;
-  top: clamp(111px, 15vh, 158px);
+  top: clamp(103px, 13vh, 142px);
   left: clamp(22px, 4vw, 58px);
-  width: 206px;
+  width: 294px;
+  max-height: calc(100svh - 200px);
+  overflow: hidden;
+  border: 1px solid rgba(181, 202, 230, .24);
+  border-radius: 15px;
+  background: rgba(10, 18, 31, .84);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .24);
+  backdrop-filter: blur(22px);
   pointer-events: auto;
 }
+.garage[open] { display: flex; flex-direction: column; }
 
+.garage-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 66px;
+  padding: 12px 14px;
+  cursor: pointer;
+  list-style: none;
+  flex: none;
+}
+.garage-toggle::-webkit-details-marker { display: none; }
+.garage-toggle:focus-visible, .car-choice:focus-visible, .car-pager button:focus-visible, .garage-search:focus-visible, .toolbar-actions :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.garage-toggle-copy { display: grid; min-width: 0; gap: 6px; }
 .garage-heading {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
-  margin: 0 0 11px;
-  color: #a4b5c8;
+  gap: 8px;
+  color: #aebed1;
   font-size: 10px;
   font-weight: 760;
-  letter-spacing: .16em;
+  letter-spacing: .1em;
 }
-
-.garage-heading span { color: #71859b; }
-.car-switcher { display: grid; gap: 8px; }
+.garage-heading span { color: #9babbe; font-weight: 560; letter-spacing: 0; text-transform: none; }
+#garage-current { overflow: hidden; color: #f5f8fc; font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.garage-toggle-action { display: flex; align-items: center; gap: 4px; color: var(--accent); font-size: 11px; font-weight: 720; white-space: nowrap; }
+.garage-toggle-action span:last-child { font-size: 18px; line-height: .7; transition: transform .2s; }
+.garage[open] .garage-toggle-action span:last-child { transform: rotate(180deg); }
+.garage-panel { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; gap: 9px; padding: 13px 12px 12px; border-top: 1px solid rgba(181, 202, 230, .14); }
+.garage-search-label { color: #c5d3e3; font-size: 12px; font-weight: 660; }
+.garage-search {
+  width: 100%; min-height: 40px; padding: 9px 11px;
+  border: 1px solid rgba(180, 199, 224, .3); border-radius: 8px;
+  outline: none; background: rgba(4, 11, 21, .78); color: #f5f8fc;
+  font: inherit; font-size: 13px;
+}
+.garage-search::placeholder { color: #8fa3ba; }
+.garage-search:focus { border-color: var(--accent); }
+.garage-results { margin: 1px 0 2px; color: #c0cfe0; font-size: 12px; }
+.car-switcher { display: grid; flex: 1 1 auto; min-height: 0; gap: 11px; max-height: max(145px, calc(100svh - 390px)); overflow-y: auto; padding: 0 3px 6px 0; scrollbar-width: thin; scrollbar-color: rgba(164, 184, 211, .55) transparent; }
+.team-group { display: grid; gap: 5px; }
+.team-group[hidden], .car-choice[hidden], .garage-empty[hidden] { display: none; }
+.team-heading { margin: 0 0 2px; padding: 4px 0 4px 8px; border-left: 3px solid #8194ac; color: #d0deed; font-size: 11px; font-weight: 770; line-height: 1.3; letter-spacing: .035em; }
+.team-group[data-team-group="redbull"] .team-heading { border-color: #ed803e; }
+.team-group[data-team-group="ferrari"] .team-heading { border-color: #f04444; }
+.team-group[data-team-group="alpine"] .team-heading { border-color: #f14f9e; }
+.team-group[data-team-group="mclaren"] .team-heading { border-color: #ff8e22; }
+.team-group[data-team-group="mercedes"] .team-heading { border-color: #53d5c6; }
+.team-group[data-team-group="audi"] .team-heading { border-color: #e6322e; }
+.team-group[data-team-group="racingbulls"] .team-heading { border-color: #4b9df1; }
+.team-group[data-team-group="haas"] .team-heading { border-color: #e54747; }
+.team-group[data-team-group="williams"] .team-heading { border-color: #397ddf; }
+.team-group[data-team-group="cadillac"] .team-heading { border-color: #aebccc; }
+.team-group[data-team-group="astonmartin"] .team-heading { border-color: #3cad83; }
 .car-choice {
-  display: grid;
+  display: grid; grid-template-columns: 43px minmax(0, 1fr) 10px; align-items: center;
   width: 100%;
-  gap: 5px;
-  padding: 13px 14px 12px;
-  border: 1px solid rgba(166, 185, 210, .16);
-  border-left: 2px solid transparent;
-  border-radius: 9px;
-  background: rgba(9, 16, 27, .48);
+  gap: 8px;
+  min-height: 46px; padding: 7px 9px;
+  border: 1px solid rgba(166, 185, 210, .15);
+  border-radius: 8px;
+  background: rgba(19, 30, 47, .56);
   color: #eaf1f8;
   text-align: left;
   cursor: pointer;
-  backdrop-filter: blur(14px);
-  transition: border-color .2s, background .2s, transform .2s;
+  transition: border-color .2s, background .2s;
 }
-.car-choice:hover, .car-choice:focus-visible { border-color: rgba(196, 210, 229, .52); background: rgba(23, 32, 46, .88); transform: translateX(2px); }
-.car-choice.is-active { border-color: rgba(var(--accent-rgb), .58); border-left-color: var(--accent-strong); background: rgba(var(--accent-rgb), .10); }
-.car-choice[data-car-choice="alpine"]:not(.is-active) { border-left-color: rgba(241, 79, 158, .45); }
-.car-choice[data-car-choice="mclaren"]:not(.is-active) { border-left-color: rgba(255, 142, 34, .56); }
-.car-choice[data-car-choice="mercedes"]:not(.is-active) { border-left-color: rgba(83, 213, 198, .58); }
-.car-choice[data-car-choice="audi"]:not(.is-active) { border-left-color: rgba(230, 50, 46, .62); }
-.car-choice-team { color: #a7b7ca; font-size: 9px; font-weight: 760; letter-spacing: .13em; }
-.car-choice-model { display: flex; justify-content: space-between; color: #f6f8fb; font-size: 19px; font-weight: 780; line-height: 1; letter-spacing: -.025em; }
-.car-choice-model span { color: #7b8fa6; font-size: 15px; font-weight: 460; }
-.car-choice.is-active .car-choice-model span { color: var(--accent); }
-.car-choice-driver { color: #a4b6c9; font-size: 11px; line-height: 1.35; }
+.car-choice:hover { border-color: rgba(196, 210, 229, .55); background: rgba(32, 45, 64, .94); }
+.car-choice.is-active { border-color: rgba(var(--accent-rgb), .75); background: rgba(var(--accent-rgb), .16); }
+.car-choice-number { color: #d2dfed; font-size: 11px; font-weight: 750; white-space: nowrap; }
+.car-choice-person { display: grid; min-width: 0; gap: 3px; }
+.car-choice-person strong { overflow: hidden; color: #f5f8fc; font-size: 13px; font-weight: 710; text-overflow: ellipsis; white-space: nowrap; }
+.car-choice-person small { color: #bfd0e3; font-size: 11px; }
+.car-choice-arrow { color: #a9bbcf; font-size: 19px; line-height: 1; }
+.car-choice.is-active .car-choice-arrow { color: var(--accent); }
+.garage-empty { margin: 7px 3px; color: #b9c9da; font-size: 12px; line-height: 1.4; }
 
 .driver-label {
   position: absolute;
@@ -322,9 +412,23 @@ h1 > span:last-child { color: #7e92aa; font-weight: 480; }
   pointer-events: none;
 }
 
+.car-pager { display: flex; align-items: center; gap: 9px; pointer-events: auto; }
+.car-pager button {
+  display: flex; align-items: center; gap: 5px; min-height: 42px; padding: 8px 11px;
+  border: 1px solid rgba(181, 202, 230, .34); border-radius: 9px;
+  background: rgba(11, 22, 38, .8); color: #e8f0f9;
+  font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; backdrop-filter: blur(14px);
+}
+.car-pager button:hover { border-color: var(--accent); background: rgba(34, 48, 67, .9); }
+.car-pager button span[aria-hidden] { color: var(--accent); font-size: 23px; line-height: .7; }
+.car-pager-current { display: grid; min-width: 114px; gap: 4px; text-align: center; text-shadow: 0 2px 12px #07101b; }
+#car-position { color: var(--accent); font-size: 11px; font-weight: 780; letter-spacing: .13em; }
+#pager-driver { overflow: hidden; color: #f3f7fc; font-size: 12px; font-weight: 670; text-overflow: ellipsis; white-space: nowrap; }
+.toolbar-right { display: grid; justify-items: end; gap: 9px; }
 .gesture-hint, .toolbar-actions { display: flex; align-items: center; gap: 10px; }
 
-.gesture-hint { color: #9dafc3; font-size: 12px; white-space: nowrap; }
+.gesture-hint { margin: 0; color: #b8c8db; font-size: 12px; white-space: nowrap; text-shadow: 0 1px 8px #07101b; }
+.hint-touch { display: none; }
 .gesture-hint i { padding: 0 4px; color: #6b8098; font-style: normal; }
 .gesture-icon { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid rgba(170, 190, 216, .24); border-radius: 50%; font-size: 17px; line-height: 1; }
 
@@ -356,32 +460,22 @@ h1 > span:last-child { color: #7e92aa; font-weight: 480; }
 
 @keyframes rotate { to { transform: rotate(360deg); } }
 
-@media (min-width: 761px) {
-  .garage[data-count="6"] { top: clamp(96px, 13vh, 140px); }
-  .garage[data-count="6"] .car-switcher {
-    gap: 6px;
-    max-height: calc(100svh - 190px);
-    overflow-y: auto;
-    scrollbar-width: thin;
-  }
-  .garage[data-count="6"] .car-choice { gap: 4px; padding: 9px 12px 8px; }
-}
-
 @media (max-width: 760px) {
-  .toolbar { align-items: stretch; flex-direction: column; gap: 16px; }
-  .toolbar-actions { flex-wrap: wrap; }
-  .gesture-hint { font-size: 11px; }
-  .garage { top: 104px; width: min(370px, calc(100% - 44px)); }
-  .car-switcher { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .toolbar { align-items: stretch; flex-direction: column; gap: 11px; padding-bottom: 20px; }
+  .car-pager { justify-content: space-between; }
+  .toolbar-right { justify-items: stretch; }
+  .toolbar-actions { justify-content: space-between; flex-wrap: wrap; }
+  .gesture-hint { justify-content: center; font-size: 11px; }
+  .hint-desktop { display: none; }
+  .hint-touch { display: inline; }
+  .garage { top: 104px; width: min(370px, calc(100% - 44px)); max-height: min(60svh, 520px); }
+  .car-switcher { max-height: max(90px, min(43svh, 350px, calc(min(60svh, 520px) - 190px))); }
   .driver-label { display: none; }
 }
 
 @media (min-width: 761px) and (max-height: 650px) {
   .garage { top: 94px; }
-  .car-switcher { gap: 5px; }
-  .car-choice { gap: 3px; padding: 9px 12px 8px; }
-  .car-choice-model { font-size: 17px; }
-  .car-choice-driver { font-size: 10px; }
+  .car-switcher { max-height: max(130px, calc(100svh - 345px)); }
 }
 
 @media (max-width: 480px) {
@@ -390,14 +484,26 @@ h1 > span:last-child { color: #7e92aa; font-weight: 480; }
   .file-pill { display: none; }
   .scene-link { margin-top: 2px; padding: 8px 11px; font-size: 11px; }
   .garage { top: 91px; }
-  .garage-heading { margin-bottom: 7px; font-size: 9px; }
-  .car-choice { padding: 10px 11px; }
-  .car-choice-team { display: none; }
-  .car-choice-model { font-size: 17px; }
-  .car-choice-driver { font-size: 10px; }
+  .car-pager { gap: 5px; }
+  .car-pager button { min-width: 42px; justify-content: center; }
+  .pager-button-text { display: none; }
   .toolbar-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .toolbar-actions a { grid-column: 1 / -1; text-align: center; }
   .toolbar-actions button { width: 100%; }
+}
+
+@media (max-width: 360px) and (max-height: 650px) {
+  .garage[open] {
+    z-index: 4;
+    top: 91px;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+    max-height: none;
+    background: rgba(8, 13, 22, .98);
+  }
+  .garage[open] .car-switcher { max-height: max(90px, calc(100svh - 300px)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -81,14 +81,20 @@ export function createHistoricalReplay(data) {
       let lapIndex = 0;
       while (lapIndex + 1 < laps.length && laps[lapIndex + 1].startSec <= time) lapIndex++;
       const lap = laps[lapIndex];
-      const finished = time >= driver.finishSec;
+      const ended = time >= driver.finishSec;
+      const retired = driver.status === 'retired' && ended;
+      const finished = driver.status !== 'retired' && ended;
+      const elapsedLapTime = lap ? Math.max(0, Math.min(time, driver.finishSec) - lap.startSec) : time;
       return {
         ...sample,
         number: driver.number,
         gridPosition: driver.gridPosition,
+        pitLaneStart: !!driver.pitLaneStart,
+        ended,
+        retired,
         finished,
         lap: lap?.lap ?? clamp(Math.floor(Math.max(0, sample.progressMeters) / trackLengthMeters) + 1, 1, laps.length || 1),
-        lapTimeSec: lap ? Math.min(lap.durationSec, Math.max(0, time - lap.startSec)) : time,
+        lapTimeSec: Number.isFinite(lap?.durationSec) ? Math.min(lap.durationSec, elapsedLapTime) : elapsedLapTime,
         lastLapSec: finished ? lap?.durationSec : lapIndex > 0 ? laps[lapIndex - 1].durationSec : null,
       };
     });

@@ -5,28 +5,27 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { carCatalog } from '../../dist/car-catalog.js';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-const RAW = join(ROOT, 'raw');
+const RAW = process.env.MONZA_REPLAY_RAW_DIR || join(ROOT, 'raw');
 const OUTPUT = join(ROOT, '..', '..', 'dist', 'monza', 'data', 'monza-2026-replay.json');
 const SESSION_KEY = 11361;
 const TRACK_LENGTH_METERS = 5793;
 const GRID_SLOT_SPACING_METERS = 9.05;
 const POLE_OFFSET_METERS = -14.1;
+const CONTROL_LINE_OFFSET_METERS = 309;
 const FRAME_INTERVAL_MS = 500;
 const MAX_PROGRESS_METERS_PER_SECOND = 105;
 const OFFICIAL_GRID_URL = 'https://www.formula1.com/en/results/2026/races/1293/italy/starting-grid';
 
 // The public OpenF1 starting_grid endpoint has no rows for this session.
 // These positions are from the official 2026 Monza starting grid above.
-const DRIVERS = [
-  { number: 10, gridPosition: 1, name: 'Pierre Gasly' },
-  { number: 44, gridPosition: 4, name: 'Lewis Hamilton' },
-  { number: 3, gridPosition: 5, name: 'Max Verstappen' },
-  { number: 1, gridPosition: 8, name: 'Lando Norris' },
-  { number: 5, gridPosition: 10, name: 'Gabriel Bortoleto' },
-  { number: 12, gridPosition: 19, name: 'Kimi Antonelli' },
-];
+const DRIVERS = [...carCatalog]
+  .sort((a, b) => a.gridPosition - b.gridPosition)
+  .map(car => ({ number: car.number, gridPosition: car.gridPosition,
+    name: car.driverName, retiredAt: car.retiredAt, pitLaneStart: car.pitLaneStart,
+    pitStartOffsetMeters: car.pitStartOffsetMeters }));
 const SELECTED_NUMBERS = new Set(DRIVERS.map(driver => driver.number));
 
 const round = (value, digits = 1) => Math.round(value * 10 ** digits) / 10 ** digits;
@@ -105,18 +104,21 @@ function positionAtTime(locations, t) {
   return { t, x: a.x + (b.x - a.x) * fraction, y: a.y + (b.y - a.y) * fraction };
 }
 
-function makeAnchors(laps, startOffsetMeters, pauses) {
+function makeAnchors(laps, startOffsetMeters, pauses, finish, partialDistanceMeters = null) {
   const anchors = [{ t: laps[0].t, progress: startOffsetMeters }];
   for (let index = 0; index < laps.length; index++) {
     const lap = laps[index];
     const end = index + 1 < laps.length
       ? laps[index + 1].t
-      : lap.t + lap.lap_duration * 1000;
+      : finish;
     if (!(end > lap.t)) throw new Error(`Tour ${lap.lap_number} non chronologique.`);
     // A lap line crossed under a red flag is an official timing event, but the
     // visual replay is frozen. Reconcile at the next post-restart line instead.
     if (!pauseAt(pauses, end)) {
-      anchors.push({ t: end, progress: lap.lap_number * TRACK_LENGTH_METERS });
+      const progress = index === laps.length - 1 && partialDistanceMeters !== null
+        ? (lap.lap_number - 1) * TRACK_LENGTH_METERS + partialDistanceMeters
+        : lap.lap_number * TRACK_LENGTH_METERS;
+      anchors.push({ t: end, progress });
     }
   }
   for (let index = 1; index < anchors.length; index++) {
@@ -126,6 +128,24 @@ function makeAnchors(laps, startOffsetMeters, pauses) {
     }
   }
   return anchors;
+}
+
+function estimatePartialLapDistance(driver, startOffsetMeters, pauses) {
+  const lastLap = driver.laps.at(-1);
+  const partial = makeSegment({ t: lastLap.t }, { t: driver.finish }, driver.locations, pauses).totalDistance;
+  const scales = [];
+  for (let index = 0; index < driver.laps.length - 1; index++) {
+    const lap = driver.laps[index];
+    if (!Number.isFinite(lap.lap_duration)) continue;
+    const next = driver.laps[index + 1];
+    const raw = makeSegment({ t: lap.t }, { t: next.t }, driver.locations, pauses).totalDistance;
+    const physical = index === 0
+      ? TRACK_LENGTH_METERS - (CONTROL_LINE_OFFSET_METERS + startOffsetMeters)
+      : TRACK_LENGTH_METERS;
+    if (raw > 1000) scales.push(physical / raw);
+  }
+  const metresPerUnit = scales.length ? median(scales) : .1;
+  return clamp(partial * metresPerUnit, 1, TRACK_LENGTH_METERS - 1);
 }
 
 function makeSegment(a, b, locations, pauses) {
@@ -315,7 +335,12 @@ async function main() {
     if (laps[0].lap_number !== 1 || laps.some((lap, index) => lap.lap_number !== index + 1)) {
       throw new Error(`Tours manquants ou dupliqués pour la voiture ${driver.number}.`);
     }
-    const finish = laps.at(-1).t + laps.at(-1).lap_duration * 1000;
+    const finalLap = laps.at(-1);
+    const finish = driver.retiredAt ? time(driver.retiredAt)
+      : finalLap.t + finalLap.lap_duration * 1000;
+    if (!(finish > finalLap.t) || !driver.retiredAt && !Number.isFinite(finalLap.lap_duration)) {
+      throw new Error(`Fin de course inconnue pour ${driver.number}.`);
+    }
     const locations = sortedTimed(locationRows)
       .filter(row => Number.isFinite(row.x) && Number.isFinite(row.y)
         && (row.x !== 0 || row.y !== 0)
@@ -351,7 +376,7 @@ async function main() {
       },
     },
     // The tuples' position field is the OFFICIAL rank in the full race field.
-    // It is not a rank computed among the six visible cars.
+    // It is not a rank computed among the visible cars.
     sampleFields: ['tSec', 'progressMeters', 'speedKph', 'throttlePct', 'brakePct', 'gear', 'officialPosition'],
     drivers: {},
     events: control.filter(row => row.t >= start && row.t <= end)
@@ -365,8 +390,14 @@ async function main() {
   frameTimes.push(end);
 
   const prepared = input.map(driver => {
-    const startOffsetMeters = POLE_OFFSET_METERS - (driver.gridPosition - 1) * GRID_SLOT_SPACING_METERS;
-    const anchors = makeAnchors(driver.laps, startOffsetMeters, pauses);
+    if (driver.pitLaneStart && !Number.isFinite(driver.pitStartOffsetMeters)) {
+      throw new Error(`Position de départ des stands manquante pour ${driver.number}.`);
+    }
+    const startOffsetMeters = driver.pitLaneStart ? driver.pitStartOffsetMeters
+      : POLE_OFFSET_METERS - (driver.gridPosition - 1) * GRID_SLOT_SPACING_METERS;
+    const partialDistanceMeters = driver.retiredAt
+      ? estimatePartialLapDistance(driver, startOffsetMeters, pauses) : null;
+    const anchors = makeAnchors(driver.laps, startOffsetMeters, pauses, driver.finish, partialDistanceMeters);
     const segments = anchors.slice(0, -1)
       .map((anchor, index) => makeSegment(anchor, anchors[index + 1], driver.locations, pauses));
     return { ...driver, startOffsetMeters, anchors, segments,
@@ -393,9 +424,11 @@ async function main() {
     restartWindows.map(window => findStationaryGridStop(driver, window, gridBounds,
       start, frameTimes, driver.smoothedProgress, driver.ownPositions)),
   ]));
-  const calibrations = [...gridStops.values()].flat().filter(Boolean);
-  if (calibrations.length < DRIVERS.length * 2) {
-    throw new Error(`Seuls ${calibrations.length} des 12 arrêts sur grille ont été identifiés.`);
+  const calibrationDrivers = new Set([3, 44, 10, 1, 12, 5]);
+  const calibrations = [...gridStops].filter(([number]) => calibrationDrivers.has(number))
+    .flatMap(([, stops]) => stops).filter(Boolean);
+  if (calibrations.length < calibrationDrivers.size * 2) {
+    throw new Error(`Seuls ${calibrations.length} des 12 arrêts de référence sur grille ont été identifiés.`);
   }
   const visualPhaseShiftMeters = median(calibrations.map(stop => stop.phase));
   const worstGridError = Math.max(...calibrations.map(stop =>
@@ -428,15 +461,18 @@ async function main() {
     }
     const driverResult = {
       name: driver.name, number: driver.number, gridPosition: driver.gridPosition,
+      pitLaneStart: !!driver.pitLaneStart,
+      status: driver.retiredAt ? 'retired' : 'finished',
+      officialCompletedLaps: driver.retiredAt ? driver.laps.at(-1).lap_number - 1 : driver.laps.length,
       startOffsetMeters: round(startOffsetMeters, 2), finishSec: relativeSeconds(driver.finish, start),
-      restartGridStops: gridStops.get(driver.number).map(stop => ({
+      restartGridStops: gridStops.get(driver.number).filter(Boolean).map(stop => ({
         label: stop.label, tSec: relativeSeconds(stop.t, start),
         officialPosition: stop.officialPosition,
         rawXY: [Math.round(stop.xy.x), Math.round(stop.xy.y)],
         gridErrorMeters: round(signedTrackOffset(stop.phase - visualPhaseShiftMeters), 1),
       })),
       laps: driver.laps.map(lap => ({ lap: lap.lap_number, startSec: relativeSeconds(lap.t, start),
-        durationSec: round(lap.lap_duration, 3) })),
+        durationSec: Number.isFinite(lap.lap_duration) ? round(lap.lap_duration, 3) : null })),
       samples,
       intervals: ownIntervals.filter(row => row.t >= start && row.t <= end)
         .map(row => [relativeSeconds(row.t, start), row.gap_to_leader, row.interval]),

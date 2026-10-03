@@ -1,10 +1,11 @@
 import { spawn } from 'node:child_process';
 import { mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { carCatalog } from '../../dist/car-catalog.js';
 
 const sessionKey = 11361;
-const drivers = [3, 1, 44, 10, 12, 5];
-const root = path.join(import.meta.dirname, 'raw');
+const drivers = carCatalog.map(car => car.number);
+const root = process.env.MONZA_REPLAY_RAW_DIR || path.join(import.meta.dirname, 'raw');
 await mkdir(root, { recursive: true });
 const range = '&date>=2026-09-06T13:00:00Z&date<2026-09-06T15:05:00Z';
 const jobs = drivers.flatMap(number => [

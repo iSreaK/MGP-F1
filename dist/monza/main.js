@@ -2,12 +2,13 @@ import * as THREE from 'three';
 import { OrbitControls } from '../vendor/three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from '../vendor/three/examples/jsm/loaders/GLTFLoader.js';
 import { createMonzaWorld } from './world.js';
-import { GRID_LANE_CENTER, GRID_SLOT_SPACING } from './grid-details.js';
+import { GRID_LANE_CENTER, GRID_SLOT_SPACING, PIT_START_LANE_CENTER } from './grid-details.js';
 import { createTrackGapLookup } from './track-gap.js';
 import { createRaceController } from './race-motion.js';
 import { createHistoricalReplay, replayLapDistance } from './historical-replay.js';
 import { computeReplayPlacements, replayVisualDistance, replayPitOffset, rateLimitReplayOffset } from './replay-lanes.js';
 import { bindWheelSpin } from './wheel-spin.js';
+import { carCatalog, carByKey } from '../car-catalog.js';
 import { createMonzaSky } from './sky.js';
 import { createMonzaWeather } from './weather.js';
 
@@ -22,6 +23,7 @@ const raceButton = document.querySelector('#race');
 const replayButton = document.querySelector('#replay');
 const replayPanel = document.querySelector('#replay-panel');
 const replayPanelToggle = document.querySelector('#replay-panel-toggle');
+const replayGuide = document.querySelector('.replay-guide');
 const replayToggle = document.querySelector('#replay-toggle');
 const replayTimeline = document.querySelector('#replay-timeline');
 const replayClock = document.querySelector('#replay-clock');
@@ -35,6 +37,7 @@ const replayThrottle = document.querySelector('#replay-throttle');
 const replayBrake = document.querySelector('#replay-brake');
 const replayOfficialPosition = document.querySelector('#replay-official-position');
 const replaySpeedKph = document.querySelector('#replay-speed-kph');
+const replayGarageLink = document.querySelector('#replay-garage-link');
 const raceHud = document.querySelector('#race-hud');
 const raceLabel = raceHud.querySelector('.race-label');
 const raceHudCode = raceHud.querySelector('.race-hud-code');
@@ -50,30 +53,21 @@ const cameraModeButton = document.querySelector('#camera-mode');
 const weatherButton = document.querySelector('#weather');
 const gestureHint = document.querySelector('.gesture-hint');
 const exploreHint = gestureHint.innerHTML;
+const controlHelp = document.querySelector('#control-help');
+const defaultControlHelp = controlHelp?.textContent;
 
 const cameraModes = ['Poursuite', 'TV', 'Hélico'];
-const replayNames = Object.freeze({
-  3: 'Verstappen', 44: 'Hamilton', 10: 'Gasly',
-  1: 'Norris', 12: 'Antonelli', 5: 'Bortoleto',
-});
+const replayNames = Object.freeze(Object.fromEntries(carCatalog.map(car => [car.number, car.shortName])));
+const carByNumber = Object.freeze(Object.fromEntries(carCatalog.map(car => [car.number, car])));
 const requestedCar = new URLSearchParams(window.location.search).get('car');
-const requestedReplayNumber = ({ ferrari: 44, alpine: 10, mclaren: 1, mercedes: 12, audi: 5 })[requestedCar] || 3;
-let focusFerrari = requestedCar === 'ferrari';
-let focusAlpine = requestedCar === 'alpine';
-let focusMcLaren = requestedCar === 'mclaren';
-let focusMercedes = requestedCar === 'mercedes';
-let focusAudi = requestedCar === 'audi';
+const requestedEntry = carByKey[requestedCar] || carByKey.redbull;
+const requestedReplayNumber = requestedEntry.number;
+let focusCarKey = requestedEntry.key === 'redbull' ? null : requestedEntry.key;
 if (raceHudCode) {
-  raceHudCode.textContent = ({
-    ferrari: 'HAMILTON / 44',
-    alpine: 'GASLY / 10',
-    mclaren: 'NORRIS / 1',
-    mercedes: 'ANTONELLI / 12',
-    audi: 'BORTOLETO / 5',
-  })[requestedCar] || 'VERSTAPPEN / RB22';
+  raceHudCode.textContent = `${requestedEntry.shortName.toUpperCase()} / ${requestedEntry.number}`;
 }
-if (focusFerrari || focusAlpine || focusMcLaren || focusMercedes || focusAudi) {
-  document.querySelector('.return-link')?.setAttribute('href', `../?car=${requestedCar}`);
+if (focusCarKey) {
+  document.querySelector('.return-link')?.setAttribute('href', `../?car=${encodeURIComponent(focusCarKey)}`);
 }
 
 function formatLapTime(seconds) {
@@ -166,25 +160,12 @@ if (renderer) {
   let flying = false;
   let racing = false;
   let raceStarted = false;
+  let raceElapsedSec = 0;
   let raceController = null;
   let redBullCar = null;
   let wheelAnimator = null;
   let lastRaceDistance = 0;
-  let ferrariRaceController = null;
-  let ferrariWheelAnimator = null;
-  let lastFerrariRaceDistance = 0;
-  let alpineRaceController = null;
-  let alpineWheelAnimator = null;
-  let lastAlpineRaceDistance = 0;
-  let mclarenRaceController = null;
-  let mclarenWheelAnimator = null;
-  let lastMcLarenRaceDistance = 0;
-  let mercedesRaceController = null;
-  let mercedesWheelAnimator = null;
-  let lastMercedesRaceDistance = 0;
-  let audiRaceController = null;
-  let audiWheelAnimator = null;
-  let lastAudiRaceDistance = 0;
+  const carInstances = new Map();
   let lapProgress = 0;
   let cameraMode = 0;
   let introPlayed = false;
@@ -198,21 +179,36 @@ if (renderer) {
   let lastReplayPoseTime = null;
   let replayTotalLaps = 53;
   let replayRequestId = 0;
+  let failedCarName = null;
   const replayLateralOffsets = new Map();
 
+  function setReplayPanelCompact(compact) {
+    if (!replayPanel || !replayPanelToggle) return;
+    replayPanel.classList.toggle('is-compact', compact);
+    replayPanelToggle.setAttribute('aria-expanded', String(!compact));
+    replayPanelToggle.setAttribute('aria-label', compact ? 'Afficher les détails du replay' : 'Réduire les détails du replay');
+    replayPanelToggle.textContent = compact ? 'Détails' : 'Réduire';
+    if (replayGuide) replayGuide.textContent = compact
+      ? 'Lecture lance la course · le curseur choisit un moment. Touchez Détails pour suivre une autre voiture.'
+      : window.matchMedia('(max-width: 760px)').matches
+        ? 'Choisissez une voiture dans le classement. Réduire revient au circuit et aux commandes.'
+        : 'Lecture lance la course · le curseur choisit un moment · le classement change la voiture suivie.';
+  }
+
   function replayCars() {
-    return {
-      3: { controller: raceController, wheels: wheelAnimator },
-      44: { controller: ferrariRaceController, wheels: ferrariWheelAnimator },
-      10: { controller: alpineRaceController, wheels: alpineWheelAnimator },
-      1: { controller: mclarenRaceController, wheels: mclarenWheelAnimator },
-      12: { controller: mercedesRaceController, wheels: mercedesWheelAnimator },
-      5: { controller: audiRaceController, wheels: audiWheelAnimator },
-    };
+    return Object.fromEntries([...carInstances].map(([number, instance]) =>
+      [number, { controller: instance.controller, wheels: instance.wheels }]));
   }
 
   function updateReplayAvailability() {
-    if (replayButton) replayButton.disabled = !Object.values(replayCars()).every(car => car.controller);
+    const loadedCount = carCatalog.filter(car => carInstances.has(car.number)).length;
+    const allCarsLoaded = loadedCount === carCatalog.length;
+    if (replayButton) replayButton.disabled = !allCarsLoaded;
+    raceButton.disabled = !allCarsLoaded || !raceController;
+    if (controlHelp) controlHelp.textContent = failedCarName
+      ? `La voiture de ${failedCarName} n’a pas pu charger. Rechargez la page pour réessayer.`
+      : allCarsLoaded ? defaultControlHelp
+        : `Chargement des voitures : ${loadedCount}/${carCatalog.length}. La simulation et le replay seront bientôt disponibles.`;
   }
 
   function replayPauseAt(timeSec) {
@@ -223,6 +219,10 @@ if (renderer) {
     const data = historicalReplay.data;
     if (replayPauseAt(timeSec)) return 'DRAPEAU ROUGE · Course interrompue';
     if (timeSec >= historicalReplay.durationSec) return 'ARRIVÉE · Replay terminé';
+    const recentRetirement = Object.values(data.drivers).find(driver => driver.status === 'retired'
+      && timeSec >= driver.finishSec && timeSec < driver.finishSec + 18);
+    if (recentRetirement) return `ABANDON · ${replayNames[recentRetirement.number]}`;
+    if (selected?.retired) return `ABANDON · ${replayNames[selected.number]}`;
     const pit = data.drivers[selected.number]?.pit?.find(stop =>
       !stop.redFlagTransit && timeSec >= stop.tSec - stop.laneDurationSec && timeSec < stop.tSec + 5);
     if (pit) return `STANDS · ${replayNames[selected.number]} · voie approximative`;
@@ -248,12 +248,18 @@ if (renderer) {
     const selected = frame.byNumber[selectedReplayNumber] || frame.cars[0];
     if (!selected) return;
     if (replayTimeline) {
-      replayTimeline.max = historicalReplay.durationSec.toFixed(1);
-      replayTimeline.value = frame.timeSec.toFixed(1);
+      replayTimeline.max = String(historicalReplay.durationSec);
+      replayTimeline.value = String(frame.timeSec);
     }
     if (replayClock) replayClock.textContent = `${formatReplayClock(frame.timeSec)} / ${formatReplayClock(historicalReplay.durationSec)}`;
     if (replaySpeed) replaySpeed.value = String(historicalReplay.speed);
     if (replayDriver) replayDriver.value = String(selectedReplayNumber);
+    if (replayGarageLink) {
+      const garageEntry = carByNumber[selectedReplayNumber];
+      replayGarageLink.href = `../?car=${encodeURIComponent(garageEntry.key)}`;
+      replayGarageLink.textContent = `Voir ${garageEntry.shortName} au garage →`;
+      replayGarageLink.setAttribute('aria-label', `Voir la monoplace de ${garageEntry.driverName} au garage`);
+    }
     if (replayToggle) {
       replayToggle.textContent = historicalReplay.playing ? 'Ⅱ  Pause' : '▶  Lecture';
       replayToggle.setAttribute('aria-pressed', String(historicalReplay.playing));
@@ -263,12 +269,15 @@ if (renderer) {
     const status = replayRaceStatus(frame.timeSec, selected);
     if (replayStatus && replayStatus.textContent !== status) replayStatus.textContent = status;
     if (replaySkipPause) replaySkipPause.hidden = !pause;
-    const rankingKey = `${selectedReplayNumber}|${frame.cars.map(car => `${car.number}:${car.officialPosition}`).join(',')}`;
+    const rankingKey = `${selectedReplayNumber}|${frame.cars.map(car => `${car.number}:${car.officialPosition}:${car.retired}`).join(',')}`;
     if (replayRankings && rankingKey !== lastReplayRankingKey) {
       lastReplayRankingKey = rankingKey;
+      const focusedNumber = replayRankings.contains(document.activeElement)
+        ? document.activeElement.closest('[data-replay-number]')?.dataset.replayNumber : null;
       replayRankings.innerHTML = frame.cars.map(car =>
-        `<li class="${car.number === selectedReplayNumber ? 'is-followed' : ''}"><button type="button" data-replay-number="${car.number}" aria-label="Suivre ${replayNames[car.number]}, position officielle ${car.officialPosition ?? 'inconnue'}"><span>${car.selectedRank}</span><strong>${replayNames[car.number]}</strong><small>#${car.number} · P${car.officialPosition ?? '—'} officielle</small></button></li>`
+        `<li class="${car.number === selectedReplayNumber ? 'is-followed' : ''}"><button type="button" data-replay-number="${car.number}" aria-current="${car.number === selectedReplayNumber}" aria-label="Suivre ${replayNames[car.number]}, ${car.retired ? 'abandon' : `position officielle ${car.officialPosition ?? 'inconnue'}`}"><span>P${car.officialPosition ?? car.selectedRank}</span><strong>${replayNames[car.number]}</strong><small>#${car.number} · ${car.retired ? 'ABANDON' : car.finished ? 'ARRIVÉE' : 'EN PISTE'}</small></button></li>`
       ).join('');
+      if (focusedNumber) replayRankings.querySelector(`[data-replay-number="${focusedNumber}"]`)?.focus({ preventScroll: true });
     }
     raceHudCode.textContent = `${replayNames[selected.number].toUpperCase()} / ${selected.number}`;
     raceSpeed.textContent = Math.round(selected.speedKph).toString();
@@ -285,14 +294,14 @@ if (renderer) {
     if (replayGear) replayGear.textContent = selected.gear > 0 ? String(selected.gear) : 'N';
     if (replayThrottle) replayThrottle.textContent = `${Math.round(selected.throttlePct)} %`;
     if (replayBrake) replayBrake.textContent = `${Math.round(selected.brakePct)} %`;
-    if (replayOfficialPosition) replayOfficialPosition.textContent = `P${selected.officialPosition ?? '—'} / 22`;
+    if (replayOfficialPosition) replayOfficialPosition.textContent = selected.retired ? 'ABANDON' : `P${selected.officialPosition ?? '—'} / 22`;
   }
 
   function placeReplayFrame(frame, snapCamera = false, snapPlacement = false) {
     if (!historicalReplay || !trackGap) return;
     const selected = frame.byNumber[selectedReplayNumber];
-    if (selected?.finished && frame.timeSec > historicalReplay.data.drivers[selectedReplayNumber].finishSec + 1) {
-      const stillRacing = frame.cars.find(car => !car.finished);
+    if (selected?.ended && frame.timeSec > historicalReplay.data.drivers[selectedReplayNumber].finishSec + 1) {
+      const stillRacing = frame.cars.find(car => !car.ended);
       if (stillRacing) selectedReplayNumber = stillRacing.number;
     }
     // GPS/timing calibration aligns both restart grids. The small residual
@@ -316,7 +325,7 @@ if (renderer) {
       replayLateralOffsets.set(car.number, placement.offset);
       model?.controller?.placeReplay(placement.u, car.progressMeters, car.speedKph, placement.offset);
       model?.wheels?.setDistance(car.progressMeters);
-      if (model?.controller?.car) model.controller.car.visible = !(car.finished && frame.timeSec > historicalReplay.data.drivers[car.number].finishSec + 1);
+      if (model?.controller?.car) model.controller.car.visible = !(car.ended && frame.timeSec > historicalReplay.data.drivers[car.number].finishSec + 1);
     }
     lastReplayPoseTime = frame.timeSec;
     updateReplayControls(frame);
@@ -327,12 +336,6 @@ if (renderer) {
     }
     if (frame.timeSec >= historicalReplay.durationSec) {
       controls.enabled = true;
-      replayPanel?.classList.remove('is-compact');
-      if (replayPanelToggle) {
-        replayPanelToggle.textContent = '−';
-        replayPanelToggle.setAttribute('aria-expanded', 'true');
-        replayPanelToggle.setAttribute('aria-label', 'Réduire le panneau du replay');
-      }
       moveCamera(initialPosition, initialTarget, 1400);
     }
   }
@@ -347,6 +350,7 @@ if (renderer) {
 
   function exitReplay() {
     replayRequestId++;
+    const focusWasInReplay = replayPanel?.contains(document.activeElement);
     if (!replayActive) {
       if (replayPanel) replayPanel.hidden = true;
       updateReplayAvailability();
@@ -364,14 +368,9 @@ if (renderer) {
       if (car.controller?.car) car.controller.car.visible = true;
     }
     if (replayPanel) replayPanel.hidden = true;
-    replayPanel?.classList.remove('is-compact');
-    if (replayPanelToggle) {
-      replayPanelToggle.setAttribute('aria-expanded', 'true');
-      replayPanelToggle.setAttribute('aria-label', 'Réduire le panneau du replay');
-      replayPanelToggle.textContent = '−';
-    }
+    setReplayPanelCompact(false);
     if (replayButton) {
-      replayButton.textContent = '↺  Replay GP 2026';
+      replayButton.textContent = '◷  Replay GP 2026';
       replayButton.setAttribute('aria-pressed', 'false');
     }
     if (weatherButton) weatherButton.disabled = false;
@@ -391,6 +390,7 @@ if (renderer) {
       cameraModeButton.textContent = 'Caméra · Poursuite';
     }
     cameraMode = 0;
+    if (focusWasInReplay) replayButton?.focus({ preventScroll: true });
   }
 
   async function startReplay() {
@@ -410,6 +410,15 @@ if (renderer) {
       const replayData = await replayDataPromise;
       if (requestId !== replayRequestId) return;
       historicalReplay = createHistoricalReplay(replayData);
+      if (carCatalog.some(car => !replayData.drivers[car.number])) {
+        throw new Error('La grille locale et les données de course ne correspondent pas.');
+      }
+      if (replayDriver) replayDriver.innerHTML = carCatalog.map(car =>
+        `<option value="${car.number}">${car.shortName} · ${car.number}</option>`).join('');
+      document.querySelector('.replay-badge').textContent = `${carCatalog.length} VOITURES`;
+      document.querySelector('.replay-ranking-head span').textContent = `Position officielle · choisir une voiture à suivre`;
+      document.querySelector('.replay-rankings').setAttribute('aria-label', `Classement officiel des ${carCatalog.length} voitures affichées`);
+      document.querySelector('.replay-source').innerHTML = `Positions longitudinales, chronos, vitesse et télémétrie historiques issus d’<a href="https://openf1.org/docs/" target="_blank" rel="noopener noreferrer">OpenF1</a> (source non officielle). ${carCatalog.length} voitures affichées ; rang officiel sur toute la grille. Trajectoire latérale et passages aux stands approximés en 3D ; retour aux stands sous drapeau rouge non représenté.`;
       replayTotalLaps = Math.max(...historicalReplay.drivers.map(driver => driver.laps?.length || 0));
       replayActive = true;
       lastReplayRankingKey = '';
@@ -421,6 +430,7 @@ if (renderer) {
       savedWetModeForReplay = wetMode;
       if (wetMode) weatherButton?.click();
       if (replayPanel) replayPanel.hidden = false;
+      setReplayPanelCompact(window.matchMedia('(max-width: 760px)').matches);
       if (replayButton) {
         replayButton.textContent = '✕  Quitter le replay';
         replayButton.setAttribute('aria-pressed', 'true');
@@ -434,6 +444,7 @@ if (renderer) {
         cameraModeButton.disabled = false;
       }
       placeReplayFrame(historicalReplay.frame(), true, true);
+      replayPanel?.focus({ preventScroll: true });
       lastTime = performance.now();
     } catch (error) {
       if (requestId !== replayRequestId) return;
@@ -451,9 +462,8 @@ if (renderer) {
     gestureHint.textContent = `Caméra ${cameraModes[cameraMode].toLowerCase()} · Pause pour explorer`;
   }
 
-  function updateRaceHud() {
-    if (!raceController) return;
-    const stats = raceController.stats;
+  function updateRaceHud(stats = raceController?.stats) {
+    if (!stats) return;
     const lapDistance = stats.distanceMeters % stats.trackLengthMeters;
     raceSpeed.textContent = Math.round(stats.speedKmh).toString();
     raceLap.textContent = `TOUR ${stats.lap + 1}`;
@@ -469,31 +479,25 @@ if (renderer) {
     racing = false;
     raceController.stop();
     controls.enabled = true;
-    raceButton.textContent = '▶  Reprendre';
+    raceButton.textContent = '▶  Reprendre la simulation';
     raceButton.setAttribute('aria-pressed', 'false');
-    raceLabel.textContent = 'COURSE EN PAUSE';
+    raceLabel.textContent = 'SIMULATION EN PAUSE';
     gestureHint.innerHTML = exploreHint;
   }
 
   function exitRace() {
     if (!raceController || !raceStarted) return;
-    raceController.reset();
-    ferrariRaceController?.reset();
-    alpineRaceController?.reset();
-    mclarenRaceController?.reset();
-    mercedesRaceController?.reset();
-    audiRaceController?.reset();
+    for (const instance of carInstances.values()) {
+      instance.controller.reset();
+      instance.lastRaceDistance = 0;
+    }
     racing = false;
     raceStarted = false;
+    raceElapsedSec = 0;
     lastRaceDistance = 0;
-    lastFerrariRaceDistance = 0;
-    lastAlpineRaceDistance = 0;
-    lastMcLarenRaceDistance = 0;
-    lastMercedesRaceDistance = 0;
-    lastAudiRaceDistance = 0;
     controls.enabled = true;
     raceHud.hidden = true;
-    raceButton.textContent = '▶  Course';
+    raceButton.textContent = '▶  Simulation libre';
     raceButton.setAttribute('aria-pressed', 'false');
     raceLabel.innerHTML = '<span class="race-live" aria-hidden="true"></span> SIMULATION DE COURSE';
     gestureHint.innerHTML = exploreHint;
@@ -513,25 +517,19 @@ if (renderer) {
     if (!raceController || !world) return;
     stopFlyover();
     if (!raceStarted) {
-      raceController.reset();
-      ferrariRaceController?.reset();
-      alpineRaceController?.reset();
-      mclarenRaceController?.reset();
-      mercedesRaceController?.reset();
-      audiRaceController?.reset();
+      for (const instance of carInstances.values()) {
+        instance.controller.reset();
+        instance.lastRaceDistance = 0;
+      }
       lastRaceDistance = 0;
-      lastFerrariRaceDistance = 0;
-      lastAlpineRaceDistance = 0;
-      lastMcLarenRaceDistance = 0;
-      lastMercedesRaceDistance = 0;
-      lastAudiRaceDistance = 0;
+      raceElapsedSec = 0;
       raceStarted = true;
     }
     raceController.start();
     racing = true;
     cameraMove = null;
     controls.enabled = false;
-    raceButton.textContent = 'Ⅱ  Pause';
+    raceButton.textContent = 'Ⅱ  Pause simulation';
     raceButton.setAttribute('aria-pressed', 'true');
     raceLabel.innerHTML = '<span class="race-live" aria-hidden="true"></span> SIMULATION DE COURSE';
     raceHud.hidden = false;
@@ -581,24 +579,18 @@ if (renderer) {
 
     // The cars load after the circuit so slower connections can explore it
     // immediately. Each model retains its own ground-contact placement.
-    const carU = trackGap.behind(world.gridU, 14.1);
-    const ferrariU = trackGap.behind(carU, GRID_SLOT_SPACING);
-    const alpineU = trackGap.behind(carU, 2 * GRID_SLOT_SPACING);
-    const mclarenU = trackGap.behind(carU, 3 * GRID_SLOT_SPACING);
-    const mercedesU = trackGap.behind(carU, 4 * GRID_SLOT_SPACING);
-    const audiU = trackGap.behind(carU, 5 * GRID_SLOT_SPACING);
     function showCarIntro(car, u, cameraSide) {
       if (introPlayed) return;
       introPlayed = true;
-      const ferrariFrame = cameraSide > 0;
+      const fromRight = cameraSide > 0;
       const direction = world.curve.getTangentAt(u).setY(0).normalize();
       const side = new THREE.Vector3(direction.z, 0, -direction.x);
       const heroPosition = car.position.clone()
-        .addScaledVector(direction, ferrariFrame ? -18 : -27)
+        .addScaledVector(direction, fromRight ? -18 : -27)
         .addScaledVector(side, cameraSide);
-      heroPosition.y = car.position.y + (ferrariFrame ? 5 : 8);
-      const heroTarget = car.position.clone().addScaledVector(direction, ferrariFrame ? 1 : 12);
-      heroTarget.y = car.position.y + (ferrariFrame ? 1 : 1.5);
+      heroPosition.y = car.position.y + (fromRight ? 5 : 8);
+      const heroTarget = car.position.clone().addScaledVector(direction, fromRight ? 1 : 12);
+      heroTarget.y = car.position.y + (fromRight ? 1 : 1.5);
       if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         camera.position.copy(heroPosition);
         controls.target.copy(heroTarget);
@@ -607,196 +599,65 @@ if (renderer) {
         moveCamera(heroPosition, heroTarget, 2300);
       }
     }
-    new GLTFLoader().load('../rb22_max_verstappen_2026.glb', ({ scene: car }) => {
-      redBullCar = car;
-      car.traverse(object => {
-        if (object.isMesh) object.castShadow = true;
-      });
-      scene.add(car);
-      raceController = createRaceController(THREE, world.curve, car, {
-        startU: carU,
-        laneOffset: -GRID_LANE_CENTER,
-        trackHeightAt: world.trackHeightAt,
-      });
-      focusSun(car.position);
-      raceController.setWet(wetMode);
-      const wheels = bindWheelSpin(THREE, car);
-      if (wheels.enabled) wheelAnimator = wheels;
-      else wheels.dispose();
-      raceButton.disabled = false;
-      updateReplayAvailability();
-      if (!focusFerrari && !focusAlpine && !focusMcLaren && !focusMercedes && !focusAudi) showCarIntro(car, carU, -8);
-    }, undefined, error => console.warn('La monoplace de démonstration est indisponible.', error));
 
-    // Slot two is staggered 9.05 m behind the RB22, on the opposite half of
-    // the 12 m track. Following at that longitudinal gap keeps both cars
-    // clear of one another through the first corner and the rest of the lap.
-    new GLTFLoader().load('../ferrari_sf26_hamilton_44.glb?v=20260925-4', ({ scene: ferrari }) => {
-      ferrari.traverse(object => {
-        if (object.isMesh) object.castShadow = true;
+    const carLoader = new GLTFLoader();
+    for (const entry of carCatalog) {
+      const gridDistance = entry.pitLaneStart ? -entry.pitStartOffsetMeters
+        : 14.1 + (entry.gridPosition - 1) * GRID_SLOT_SPACING;
+      const startU = trackGap.behind(world.gridU, gridDistance);
+      const laneOffset = entry.pitLaneStart ? PIT_START_LANE_CENTER
+        : entry.gridPosition % 2 ? -GRID_LANE_CENTER : GRID_LANE_CENTER;
+      const modelUrl = new URL(entry.url, new URL('../', import.meta.url)).href;
+      carLoader.load(modelUrl, ({ scene: car }) => {
+        car.traverse(object => {
+          if (object.isMesh) object.castShadow = true;
+        });
+        scene.add(car);
+        const controller = createRaceController(THREE, world.curve, car, {
+          startU, laneOffset, pitLaneStart: entry.pitLaneStart, trackHeightAt: world.trackHeightAt,
+        });
+        controller.stats.entry = entry;
+        controller.setWet(wetMode);
+        const wheelBinding = bindWheelSpin(THREE, car);
+        const wheels = wheelBinding.enabled ? wheelBinding : null;
+        if (!wheels) wheelBinding.dispose();
+        carInstances.set(entry.number, { entry, controller, wheels, lastRaceDistance: 0 });
+        if (entry.key === 'redbull') {
+          redBullCar = car;
+          raceController = controller;
+          wheelAnimator = wheels;
+          focusSun(car.position);
+        }
+        if (raceStarted && raceController && entry.key !== 'redbull') {
+          if (!entry.pitLaneStart) {
+            const leader = raceController.stats;
+            controller.placeAt(trackGap.behind(leader.progress,
+              (entry.gridPosition - carByKey.redbull.gridPosition) * GRID_SLOT_SPACING),
+            leader.distanceMeters);
+            carInstances.get(entry.number).lastRaceDistance = leader.distanceMeters;
+          }
+        }
+        if (entry.key === focusCarKey || (!focusCarKey && entry.key === 'redbull')) {
+          showCarIntro(car, startU, entry.pitLaneStart ? -7 : laneOffset > 0 ? 7 : -8);
+        }
+        updateReplayAvailability();
+      }, undefined, error => {
+        console.warn(`La monoplace de ${entry.driverName} est indisponible.`, error);
+        failedCarName = entry.driverName;
+        updateReplayAvailability();
+        if (entry.key === focusCarKey && redBullCar) {
+          focusCarKey = null;
+          showCarIntro(redBullCar,
+            trackGap.behind(world.gridU, 14.1 + (carByKey.redbull.gridPosition - 1) * GRID_SLOT_SPACING), -8);
+        }
       });
-      scene.add(ferrari);
-      ferrariRaceController = createRaceController(THREE, world.curve, ferrari, {
-        startU: ferrariU,
-        laneOffset: GRID_LANE_CENTER,
-        trackHeightAt: world.trackHeightAt,
-      });
-      ferrariRaceController.setWet(wetMode);
-      const wheels = bindWheelSpin(THREE, ferrari);
-      if (wheels.enabled) ferrariWheelAnimator = wheels;
-      else wheels.dispose();
-      updateReplayAvailability();
-      if (raceStarted && raceController) {
-        const leader = raceController.stats;
-        ferrariRaceController.placeAt(
-          trackGap.behind(leader.progress, GRID_SLOT_SPACING),
-          leader.distanceMeters,
-        );
-        lastFerrariRaceDistance = leader.distanceMeters;
-      }
-      if (focusFerrari) showCarIntro(ferrari, ferrariU, 7);
-    }, undefined, error => {
-      console.warn('La Ferrari SF-26 est indisponible.', error);
-      focusFerrari = false;
-      if (redBullCar && !focusAlpine && !focusMcLaren && !focusMercedes && !focusAudi) showCarIntro(redBullCar, carU, -8);
-    });
-
-    // Gasly occupies the third staggered grid box, 18.1 m behind pole on
-    // the same half of the track. The geometric lookup preserves this gap
-    // around Monza's tighter bends when all the cars are moving.
-    new GLTFLoader().load('../alpine_a526_gasly_10.glb?v=20260925-2', ({ scene: alpine }) => {
-      alpine.traverse(object => {
-        if (object.isMesh) object.castShadow = true;
-      });
-      scene.add(alpine);
-      alpineRaceController = createRaceController(THREE, world.curve, alpine, {
-        startU: alpineU,
-        laneOffset: -GRID_LANE_CENTER,
-        trackHeightAt: world.trackHeightAt,
-      });
-      alpineRaceController.setWet(wetMode);
-      const wheels = bindWheelSpin(THREE, alpine);
-      if (wheels.enabled) alpineWheelAnimator = wheels;
-      else wheels.dispose();
-      updateReplayAvailability();
-      if (raceStarted && raceController) {
-        const leader = raceController.stats;
-        alpineRaceController.placeAt(
-          trackGap.behind(leader.progress, 2 * GRID_SLOT_SPACING),
-          leader.distanceMeters,
-        );
-        lastAlpineRaceDistance = leader.distanceMeters;
-      }
-      if (focusAlpine) showCarIntro(alpine, alpineU, 7);
-    }, undefined, error => {
-      console.warn('L’Alpine A526 est indisponible.', error);
-      focusAlpine = false;
-      if (redBullCar && !focusFerrari && !focusMcLaren && !focusMercedes && !focusAudi) showCarIntro(redBullCar, carU, -8);
-    });
-
-    // Norris starts from the fourth marked box, on Ferrari's half of the
-    // straight. The same curve-distance lookup holds the staggered gap in
-    // bends instead of approximating it with a fixed spline parameter.
-    new GLTFLoader().load('../mclaren_mcl40_norris_1.glb?v=20260925-2', ({ scene: mclaren }) => {
-      mclaren.traverse(object => {
-        if (object.isMesh) object.castShadow = true;
-      });
-      scene.add(mclaren);
-      mclarenRaceController = createRaceController(THREE, world.curve, mclaren, {
-        startU: mclarenU,
-        laneOffset: GRID_LANE_CENTER,
-        trackHeightAt: world.trackHeightAt,
-      });
-      mclarenRaceController.setWet(wetMode);
-      const wheels = bindWheelSpin(THREE, mclaren);
-      if (wheels.enabled) mclarenWheelAnimator = wheels;
-      else wheels.dispose();
-      updateReplayAvailability();
-      if (raceStarted && raceController) {
-        const leader = raceController.stats;
-        mclarenRaceController.placeAt(
-          trackGap.behind(leader.progress, 3 * GRID_SLOT_SPACING),
-          leader.distanceMeters,
-        );
-        lastMcLarenRaceDistance = leader.distanceMeters;
-      }
-      if (focusMcLaren) showCarIntro(mclaren, mclarenU, 7);
-    }, undefined, error => {
-      console.warn('La McLaren MCL40 est indisponible.', error);
-      focusMcLaren = false;
-      if (redBullCar && !focusFerrari && !focusAlpine && !focusMercedes && !focusAudi) showCarIntro(redBullCar, carU, -8);
-    });
-
-    // Antonelli lines up in the fifth staggered box, on the same half as
-    // Verstappen and Gasly. Geometric track distance maintains the gap
-    // through bends while each wheel follows the asphalt height independently.
-    new GLTFLoader().load('../mercedes_w17_antonelli_12.glb?v=20260925-2', ({ scene: mercedes }) => {
-      mercedes.traverse(object => {
-        if (object.isMesh) object.castShadow = true;
-      });
-      scene.add(mercedes);
-      mercedesRaceController = createRaceController(THREE, world.curve, mercedes, {
-        startU: mercedesU,
-        laneOffset: -GRID_LANE_CENTER,
-        trackHeightAt: world.trackHeightAt,
-      });
-      mercedesRaceController.setWet(wetMode);
-      const wheels = bindWheelSpin(THREE, mercedes);
-      if (wheels.enabled) mercedesWheelAnimator = wheels;
-      else wheels.dispose();
-      updateReplayAvailability();
-      if (raceStarted && raceController) {
-        const leader = raceController.stats;
-        mercedesRaceController.placeAt(
-          trackGap.behind(leader.progress, 4 * GRID_SLOT_SPACING),
-          leader.distanceMeters,
-        );
-        lastMercedesRaceDistance = leader.distanceMeters;
-      }
-      if (focusMercedes) showCarIntro(mercedes, mercedesU, 7);
-    }, undefined, error => {
-      console.warn('La Mercedes W17 est indisponible.', error);
-      focusMercedes = false;
-      if (redBullCar && !focusFerrari && !focusAlpine && !focusMcLaren && !focusAudi) showCarIntro(redBullCar, carU, -8);
-    });
-
-    // Bortoleto occupies box six on Ferrari and Norris's side. Keeping the
-    // gap in metres, rather than in curve parameters, preserves staggered
-    // spacing through the first chicane and the rest of Monza.
-    new GLTFLoader().load('../audi_r26_bortoleto_5.glb?v=20260925-1', ({ scene: audi }) => {
-      audi.traverse(object => {
-        if (object.isMesh) object.castShadow = true;
-      });
-      scene.add(audi);
-      audiRaceController = createRaceController(THREE, world.curve, audi, {
-        startU: audiU,
-        laneOffset: GRID_LANE_CENTER,
-        trackHeightAt: world.trackHeightAt,
-      });
-      audiRaceController.setWet(wetMode);
-      const wheels = bindWheelSpin(THREE, audi);
-      if (wheels.enabled) audiWheelAnimator = wheels;
-      else wheels.dispose();
-      updateReplayAvailability();
-      if (raceStarted && raceController) {
-        const leader = raceController.stats;
-        audiRaceController.placeAt(
-          trackGap.behind(leader.progress, 5 * GRID_SLOT_SPACING),
-          leader.distanceMeters,
-        );
-        lastAudiRaceDistance = leader.distanceMeters;
-      }
-      if (focusAudi) showCarIntro(audi, audiU, 7);
-    }, undefined, error => {
-      console.warn('L’Audi R26 est indisponible.', error);
-      focusAudi = false;
-      if (redBullCar && !focusFerrari && !focusAlpine && !focusMcLaren && !focusMercedes) showCarIntro(redBullCar, carU, -8);
-    });
+    }
 
     overviewButton.disabled = false;
     gridButton.disabled = false;
     flyoverButton.disabled = false;
     loading.classList.add('is-hidden');
+    updateReplayAvailability();
   } catch (error) {
     loadingMessage.textContent = 'Le circuit n’a pas pu être affiché.';
     console.error(error);
@@ -814,15 +675,15 @@ if (renderer) {
     exitRace();
     stopFlyover();
     if (!world) return;
-    const focusedController = focusAudi ? audiRaceController
-      : focusMercedes ? mercedesRaceController
-      : focusMcLaren ? mclarenRaceController
-      : focusAlpine ? alpineRaceController : focusFerrari ? ferrariRaceController : null;
+    const focusedController = focusCarKey
+      ? carInstances.get(carByKey[focusCarKey].number)?.controller : null;
     if (focusedController) {
+      const focusedEntry = carByKey[focusCarKey];
       const at = focusedController.stats.position.clone();
       const dir = world.curve.getTangentAt(focusedController.stats.progress).setY(0).normalize();
       const side = new THREE.Vector3(dir.z, 0, -dir.x);
-      const position = at.clone().addScaledVector(dir, -18).addScaledVector(side, 7);
+      const position = at.clone().addScaledVector(dir, -18)
+        .addScaledVector(side, focusedEntry.pitLaneStart ? -7 : 7);
       position.y = at.y + 5;
       const target = at.clone().addScaledVector(dir, 1);
       target.y = at.y + 1;
@@ -861,10 +722,7 @@ if (renderer) {
     else startReplay();
   });
   replayPanelToggle?.addEventListener('click', () => {
-    const compact = replayPanel.classList.toggle('is-compact');
-    replayPanelToggle.setAttribute('aria-expanded', String(!compact));
-    replayPanelToggle.setAttribute('aria-label', compact ? 'Afficher les détails du replay' : 'Réduire le panneau du replay');
-    replayPanelToggle.textContent = compact ? '+' : '−';
+    setReplayPanelCompact(!replayPanel.classList.contains('is-compact'));
   });
   replayToggle?.addEventListener('click', () => {
     if (!replayActive || !historicalReplay) return;
@@ -894,12 +752,20 @@ if (renderer) {
     if (!replayActive || !historicalReplay) return;
     selectedReplayNumber = Number(replayDriver.value);
     placeReplayFrame(historicalReplay.frame(), true);
+    if (window.matchMedia('(max-width: 760px)').matches) {
+      setReplayPanelCompact(true);
+      replayPanelToggle.focus({ preventScroll: true });
+    }
   });
   replayRankings?.addEventListener('click', event => {
     const button = event.target.closest('[data-replay-number]');
     if (!button || !replayActive || !historicalReplay) return;
     selectedReplayNumber = Number(button.dataset.replayNumber);
     placeReplayFrame(historicalReplay.frame(), true);
+    if (window.matchMedia('(max-width: 760px)').matches) {
+      setReplayPanelCompact(true);
+      replayPanelToggle.focus({ preventScroll: true });
+    }
   });
   replaySkipPause?.addEventListener('click', () => {
     if (!replayActive || !historicalReplay) return;
@@ -917,12 +783,7 @@ if (renderer) {
     if (!weather) return;
     wetMode = !wetMode;
     weather.setWet(wetMode);
-    raceController?.setWet(wetMode);
-    ferrariRaceController?.setWet(wetMode);
-    alpineRaceController?.setWet(wetMode);
-    mclarenRaceController?.setWet(wetMode);
-    mercedesRaceController?.setWet(wetMode);
-    audiRaceController?.setWet(wetMode);
+    for (const instance of carInstances.values()) instance.controller.setWet(wetMode);
     weatherButton.textContent = wetMode ? 'Météo · Pluie' : 'Météo · Sec';
     weatherButton.setAttribute('aria-pressed', String(wetMode));
     weatherButton.setAttribute('aria-label', wetMode ? 'Désactiver la pluie et sécher la piste' : 'Activer la pluie et la piste mouillée');
@@ -932,6 +793,9 @@ if (renderer) {
     sky.setWet(wetMode);
   });
   window.addEventListener('keydown', event => {
+    const target = event.target;
+    if (target instanceof HTMLElement &&
+      (target.isContentEditable || target.closest('button, a, input, select, textarea'))) return;
     if (event.key.toLowerCase() !== 'c' || !(raceStarted || replayActive) || event.repeat) return;
     cameraModeButton?.click();
   });
@@ -940,24 +804,28 @@ if (renderer) {
   function followRaceCamera(cameraStats, speedKph, dt, snap = false) {
     const forward = cameraStats.tangent;
     const side = new THREE.Vector3(forward.z, 0, -forward.x);
+    const pitLaneView = cameraStats.entry?.pitLaneStart && cameraStats.distanceMeters < 310;
     const desiredPosition = cameraStats.position.clone();
     const desiredTarget = cameraStats.position.clone();
     const narrowView = camera.aspect < .75;
     let desiredFov;
     if (cameraMode === 1) {
-      desiredPosition.addScaledVector(forward, -5).addScaledVector(side, narrowView ? 14 : 19);
+      desiredPosition.addScaledVector(forward, -5)
+        .addScaledVector(side, pitLaneView ? -8 : narrowView ? 14 : 19);
       desiredPosition.y += narrowView ? 6.66 : 6.06;
       desiredTarget.addScaledVector(forward, 5);
       desiredTarget.y += 1.01;
       desiredFov = narrowView ? 52 : 42;
     } else if (cameraMode === 2) {
-      desiredPosition.addScaledVector(forward, narrowView ? -38 : -43).addScaledVector(side, narrowView ? 12 : 19);
+      desiredPosition.addScaledVector(forward, narrowView ? -38 : -43)
+        .addScaledVector(side, pitLaneView ? -8 : narrowView ? 12 : 19);
       desiredPosition.y += narrowView ? 71.66 : 65.66;
       desiredTarget.addScaledVector(forward, 24);
       desiredTarget.y += .66;
       desiredFov = narrowView ? 53 : 46;
     } else {
-      desiredPosition.addScaledVector(forward, narrowView ? -12.5 : -7.8).addScaledVector(side, narrowView ? .65 : 2.4);
+      desiredPosition.addScaledVector(forward, narrowView ? -12.5 : -7.8)
+        .addScaledVector(side, pitLaneView ? -1.5 : narrowView ? .65 : 2.4);
       desiredPosition.y += narrowView ? 3.56 : 2.61;
       desiredTarget.addScaledVector(forward, narrowView ? 12 : 17);
       desiredTarget.y += .71;
@@ -983,55 +851,29 @@ if (renderer) {
       placeReplayFrame(historicalReplay.tick(dt));
     } else if (racing && world && raceController) {
       const stats = raceController.update(dt);
+      raceElapsedSec += dt;
       if (wheelAnimator) wheelAnimator.update(stats.distanceMeters - lastRaceDistance);
       lastRaceDistance = stats.distanceMeters;
-      if (ferrariRaceController) {
-        ferrariRaceController.placeAt(
-          trackGap.behind(stats.progress, GRID_SLOT_SPACING),
-          stats.distanceMeters,
-        );
-        if (ferrariWheelAnimator) ferrariWheelAnimator.update(stats.distanceMeters - lastFerrariRaceDistance);
-        lastFerrariRaceDistance = stats.distanceMeters;
+      for (const instance of carInstances.values()) {
+        if (instance.entry.number === carByKey.redbull.number) continue;
+        if (instance.entry.pitLaneStart) {
+          if (raceElapsedSec >= instance.entry.pitStartDelaySec) {
+            instance.controller.start();
+            const pitStats = instance.controller.update(dt);
+            instance.wheels?.update(pitStats.distanceMeters - instance.lastRaceDistance);
+            instance.lastRaceDistance = pitStats.distanceMeters;
+          }
+          continue;
+        }
+        const gap = (instance.entry.gridPosition - carByKey.redbull.gridPosition) * GRID_SLOT_SPACING;
+        instance.controller.placeAt(trackGap.behind(stats.progress, gap), stats.distanceMeters);
+        instance.wheels?.update(stats.distanceMeters - instance.lastRaceDistance);
+        instance.lastRaceDistance = stats.distanceMeters;
       }
-      if (alpineRaceController) {
-        alpineRaceController.placeAt(
-          trackGap.behind(stats.progress, 2 * GRID_SLOT_SPACING),
-          stats.distanceMeters,
-        );
-        if (alpineWheelAnimator) alpineWheelAnimator.update(stats.distanceMeters - lastAlpineRaceDistance);
-        lastAlpineRaceDistance = stats.distanceMeters;
-      }
-      if (mclarenRaceController) {
-        mclarenRaceController.placeAt(
-          trackGap.behind(stats.progress, 3 * GRID_SLOT_SPACING),
-          stats.distanceMeters,
-        );
-        if (mclarenWheelAnimator) mclarenWheelAnimator.update(stats.distanceMeters - lastMcLarenRaceDistance);
-        lastMcLarenRaceDistance = stats.distanceMeters;
-      }
-      if (mercedesRaceController) {
-        mercedesRaceController.placeAt(
-          trackGap.behind(stats.progress, 4 * GRID_SLOT_SPACING),
-          stats.distanceMeters,
-        );
-        if (mercedesWheelAnimator) mercedesWheelAnimator.update(stats.distanceMeters - lastMercedesRaceDistance);
-        lastMercedesRaceDistance = stats.distanceMeters;
-      }
-      if (audiRaceController) {
-        audiRaceController.placeAt(
-          trackGap.behind(stats.progress, 5 * GRID_SLOT_SPACING),
-          stats.distanceMeters,
-        );
-        if (audiWheelAnimator) audiWheelAnimator.update(stats.distanceMeters - lastAudiRaceDistance);
-        lastAudiRaceDistance = stats.distanceMeters;
-      }
-      const cameraStats = focusAudi && audiRaceController ? audiRaceController.stats
-        : focusMercedes && mercedesRaceController ? mercedesRaceController.stats
-        : focusMcLaren && mclarenRaceController ? mclarenRaceController.stats
-        : focusAlpine && alpineRaceController ? alpineRaceController.stats
-        : focusFerrari && ferrariRaceController ? ferrariRaceController.stats : stats;
-      followRaceCamera(cameraStats, stats.speedKmh, dt);
-      updateRaceHud();
+      const cameraStats = focusCarKey
+        ? carInstances.get(carByKey[focusCarKey].number)?.controller?.stats || stats : stats;
+      followRaceCamera(cameraStats, cameraStats.speedKmh, dt);
+      updateRaceHud(cameraStats);
     } else if (flying && world) {
       lapProgress = (lapProgress + dt / 80) % 1;
       const at = world.curve.getPointAt(lapProgress);

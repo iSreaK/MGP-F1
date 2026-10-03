@@ -95,7 +95,8 @@ export function createRaceController(THREE, curve, car, options = {}) {
   const lateralAcceleration = clamp(finite(options.lateralG, 4), 1.5, 6) * 9.81;
   const acceleration = clamp(finite(options.acceleration, 11), 1, 25);
   const braking = clamp(finite(options.braking, 23), 2, 45);
-  const laneOffset = clamp(finite(options.laneOffset, 0), -3, 3);
+  const laneOffset = clamp(finite(options.laneOffset, 0), -3, 19);
+  const pitLaneStart = !!options.pitLaneStart;
   const trackHeightAt = typeof options.trackHeightAt === 'function'
     ? options.trackHeightAt
     : u => curve.getPointAt(wrap01(u)).y;
@@ -211,7 +212,9 @@ export function createRaceController(THREE, curve, car, options = {}) {
 
   function placeCar(replayOffset = null) {
     const raceOffset = lateralOffset(stats.progress);
-    const gridBlend = 1 - smoothstep(clamp(stats.distanceMeters / 120, 0, 1));
+    const gridBlend = pitLaneStart
+      ? 1 - smoothstep(clamp((stats.distanceMeters - 130) / 180, 0, 1))
+      : 1 - smoothstep(clamp(stats.distanceMeters / 120, 0, 1));
     const offset = replayOffset === null
       ? raceOffset + (laneOffset - raceOffset) * gridBlend
       : clamp(replayOffset, -3, 19);
