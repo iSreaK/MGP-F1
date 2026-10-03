@@ -28,6 +28,8 @@
         <nav aria-label="Pages du site"><a class="return-link" href="../" aria-label="Retour aux garages des monoplaces"><span aria-hidden="true" class="return-arrow">←</span><span class="return-text">Tous les garages</span></a></nav>
       </header>
 
+      <button type="button" class="immersive-toggle" id="immersive-toggle" aria-pressed="false" aria-keyshortcuts="I" hidden>Mode immersion</button>
+
       <section class="circuit-data" aria-label="Informations sur le circuit">
         <p class="data-heading"><span class="data-heading-line" aria-hidden="true"></span> ITALIE · PARC DE MONZA</p>
         <div class="data-stats">
@@ -37,27 +39,29 @@
         <p class="data-note">Tracé Grand Prix · sens horaire</p>
       </section>
 
-      <section class="race-hud" id="race-hud" aria-label="Données de course" hidden>
-        <div class="race-hud-head"><p class="race-label"><span class="race-live" aria-hidden="true"></span> SIMULATION DE COURSE</p><span class="race-hud-code" aria-hidden="true">MONZA / GP</span></div>
+      <section class="race-hud" id="race-hud" aria-label="Statistiques et temps de course" hidden>
+        <div class="race-hud-head"><p class="race-label" aria-hidden="true"><span class="race-live"></span> STATS & TEMPS</p><span class="race-hud-code" aria-hidden="true">MONZA / GP</span><button type="button" id="race-hud-toggle" class="race-hud-toggle" aria-expanded="false" aria-controls="race-hud-details">Plus</button></div>
         <p class="race-speed-label">VITESSE INSTANTANÉE</p>
         <div class="race-readout"><strong id="race-speed">0</strong><span>KM/H</span></div>
-        <div class="race-timing"><div><small>TOUR ACTUEL</small><strong id="race-lap-time">00:00.0</strong></div><div><small>DERNIER TOUR</small><strong id="race-last-lap">—</strong></div></div>
-        <div class="race-lap"><div><small id="race-lap-label">TOUR</small><span id="race-lap">TOUR 1</span></div><div><small>DISTANCE</small><span id="race-distance">0,00 / 5,79 KM</span></div></div>
+        <div class="race-quick"><div><small>TOUR ACTUEL</small><strong id="race-lap-time">00:00.0</strong></div><div><small id="race-lap-label">TOUR</small><strong id="race-lap">TOUR 1</strong></div></div>
+        <div id="race-hud-details">
+        <div class="race-timing"><div><small>DERNIER TOUR</small><strong id="race-last-lap">—</strong></div></div>
+        <div class="race-lap"><div><small>DISTANCE PARCOURUE</small><span id="race-distance">0,00 / 5,79 KM</span></div></div>
         <div class="race-progress" aria-hidden="true"><span id="race-progress"></span></div>
         <p class="race-section"><span>SECTEUR /</span><strong id="race-section">Rettifilo Tribune</strong></p>
+        </div>
       </section>
 
       <section class="replay-panel" id="replay-panel" tabindex="-1" aria-label="Replay du Grand Prix d'Italie 2026" hidden>
         <div class="replay-head">
           <div>
-            <p class="replay-kicker">REPLAY HISTORIQUE</p>
-            <h2>MONZA <span>2026</span></h2>
+            <p class="replay-kicker">REPLAY · GP 2026</p>
+            <h2>Régie</h2>
           </div>
-          <div class="replay-head-actions"><span class="replay-badge">VOITURES EN CHARGEMENT</span><button type="button" id="replay-panel-toggle" class="replay-panel-toggle" aria-expanded="true" aria-label="Réduire les détails du replay">Réduire</button></div>
+          <div class="replay-head-actions"><span class="replay-badge">VOITURES EN CHARGEMENT</span><button type="button" id="replay-panel-toggle" class="replay-panel-toggle" aria-expanded="false" aria-label="Ouvrir la régie">Régie</button></div>
         </div>
         <p class="replay-status" id="replay-status" role="status" aria-live="polite">Chargement des données de course…</p>
         <p class="replay-guide">Lecture lance la course · le curseur choisit un moment · le classement change la voiture suivie.</p>
-        <div class="replay-live-speed"><strong id="replay-speed-kph">0</strong><span>KM/H · voiture suivie</span></div>
         <div class="replay-controls">
           <button type="button" id="replay-toggle" class="replay-toggle" aria-label="Lire le replay">▶ Lecture</button>
           <label for="replay-speed">Lecture</label>
@@ -70,12 +74,12 @@
         </div>
         <button type="button" id="replay-skip-pause" class="replay-skip-pause" hidden>Passer l’interruption →</button>
         <div class="replay-timeline-head">
-          <label for="replay-timeline">MOMENT DU GRAND PRIX</label>
+          <label for="replay-timeline">TEMPS DE COURSE</label>
           <output id="replay-clock" for="replay-timeline">00:00 / 00:00</output>
         </div>
         <input type="range" id="replay-timeline" min="0" max="1" value="0" step="any" aria-label="Avancer dans le replay" />
         <div class="replay-driver-row">
-          <label for="replay-driver">CAMÉRA SUR</label>
+          <label for="replay-driver">SUIVRE</label>
           <select id="replay-driver" aria-label="Voiture suivie par la caméra">
             <option value="12">Antonelli · 12</option>
             <option value="3">Verstappen · 3</option>
@@ -94,7 +98,7 @@
         </div>
         <div class="replay-ranking-head"><h3>CLASSEMENT</h3><span>Position officielle · choisir une voiture à suivre</span></div>
         <ol class="replay-rankings" id="replay-rankings" aria-label="Classement officiel des voitures affichées"></ol>
-        <p class="replay-source">Positions longitudinales, chronos, vitesse et télémétrie historiques issus d’<a href="https://openf1.org/docs/" target="_blank" rel="noopener noreferrer">OpenF1</a> (source non officielle). Rang officiel sur toute la grille. Trajectoire latérale et passages aux stands approximés en 3D ; retour aux stands sous drapeau rouge non représenté.</p>
+        <p class="replay-source">Temps, rangs et télémétrie issus d’<a href="https://openf1.org/docs/" target="_blank" rel="noopener noreferrer">OpenF1</a> (source non officielle). Les mesures invalides sont estimées à partir de tours valides du même pilote. Positions 3D recalées sur les passages de ligne ; trajectoires latérales et voie des stands approximatives.</p>
       </section>
 
       <div class="loading" id="loading" role="status" aria-live="polite">
@@ -109,6 +113,8 @@
       <footer class="toolbar">
         <p class="gesture-hint">Glisser pour tourner <span>·</span> Molette ou pincement pour zoomer</p>
         <div class="control-panel">
+          <div class="compact-controls" id="compact-controls" hidden><button type="button" id="quick-pause" class="quick-pause">Ⅱ Pause</button><button type="button" id="controls-toggle" aria-expanded="false" aria-controls="course-actions">Commandes</button></div>
+          <div id="course-actions" class="course-actions">
           <span class="control-label" aria-hidden="true">EXPLORER MONZA <span>01 / CIRCUIT</span></span>
           <p class="control-help" id="control-help">Simulation libre : les voitures roulent automatiquement. Replay GP 2026 : revivez la course à partir des données historiques.</p>
           <div class="actions">
@@ -124,6 +130,7 @@
               <button type="button" id="weather" class="weather-button" disabled aria-pressed="false" aria-label="Activer la pluie et la piste mouillée">Météo · Sec</button>
               <button type="button" id="camera-mode" class="camera-button" aria-keyshortcuts="C" hidden disabled>Caméra · Poursuite</button>
             </div>
+          </div>
           </div>
         </div>
       </footer>

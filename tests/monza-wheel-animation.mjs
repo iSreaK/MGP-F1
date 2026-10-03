@@ -25,6 +25,7 @@ function makeCar(partNames = WHEEL_PART_NAMES) {
     const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial());
     mesh.name = name.replaceAll(' ', '_');
     mesh.userData.name = name;
+    mesh.castShadow = true;
     car.add(mesh);
     sources.push(mesh);
   }
@@ -44,6 +45,8 @@ for (const pivot of binding.pivots) {
   assert.equal(pivot.children.length, WHEEL_PART_NAMES.length);
   assert.ok(pivot.children.every(part => part.geometry.getAttribute('position').count === 3),
     'a pivot contains compact wheel-only geometry');
+  assert.equal(pivot.children.filter(part => part.castShadow).length, 1,
+    'only the exterior tyre casts a redundant-free wheel shadow');
 }
 binding.setDistance(WHEEL_GEOMETRY.radius * Math.PI / 2);
 assert.ok(binding.pivots.every(pivot => Math.abs(pivot.rotation.z - Math.PI / 2) < 1e-10));

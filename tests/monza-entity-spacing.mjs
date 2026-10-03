@@ -9,6 +9,7 @@ import { TRACK_POINTS, LANDMARKS } from '../dist/monza/track-data.js';
 import { trackElevationAt } from '../dist/monza/terrain-profile.js';
 import { createHistoricalReplay } from '../dist/monza/historical-replay.js';
 import { computeReplayPlacements, rateLimitReplayOffset, replayPitOffset, replayVisualDistance } from '../dist/monza/replay-lanes.js';
+import { MONZA_FINISH_BEFORE_START_METERS } from '../dist/monza/grid-details.js';
 
 const data = JSON.parse(readFileSync(new URL('../dist/monza/data/monza-2026-replay.json', import.meta.url), 'utf8'));
 const replay = createHistoricalReplay(data);
@@ -34,7 +35,8 @@ const realCurve = new THREE.CatmullRomCurve3(centerline.map(([x, z], index) =>
   new THREE.Vector3(x, .3 + trackElevationAt(cumulative[index] / perimeter), z)),
   true, 'centripetal', .27);
 const realGap = createTrackGapLookup(realCurve);
-const realGridU = cumulative[LANDMARKS.gridIndex] / perimeter;
+const realGridU = realGap.behind(cumulative[LANDMARKS.gridIndex] / perimeter,
+  -MONZA_FINISH_BEFORE_START_METERS);
 
 // Independently check rotated car footprints in world X/Z, including tight
 // chicanes. Every local GLB is about 5.04 m long and 2.04 m wide.

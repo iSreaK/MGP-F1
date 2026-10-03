@@ -55,11 +55,20 @@ assert.ok(computeReplayPlacements([{ number: 3, gridPosition: 5, progressMeters:
   0, scaledGap, data.session.trackLengthMeters).get(3).u < 1e-10);
 
 const [redFlag] = data.session.pauses;
-const stoppedA = replay.frame(redFlag.startSec + 30);
-const stoppedB = replay.frame(redFlag.endSec - 30);
-for (const car of stoppedA.cars) {
-  assert.equal(car.progressMeters, stoppedB.byNumber[car.number].progressMeters, `Drapeau rouge ${car.number}`);
-  assert.equal(car.speedKph, 0);
+const redFlagStart = replay.frame(redFlag.startSec + 10);
+const parkedA = replay.frame(redFlag.startSec + 180);
+const parkedB = replay.frame(redFlag.endSec - 60);
+for (const car of parkedA.cars) {
+  const atStart = redFlagStart.byNumber[car.number];
+  const later = parkedB.byNumber[car.number];
+  if (!atStart.retired) {
+    assert.ok(car.progressMeters > atStart.progressMeters + 100,
+      `Retour aux stands sous drapeau rouge ${car.number}`);
+  }
+  assert.ok(Math.abs(car.progressMeters - later.progressMeters) < 25,
+    `Arrêt aux stands sous drapeau rouge ${car.number}`);
+  assert.ok(car.speedKph <= 2, `Vitesse au stand ${car.number}`);
+  assert.ok(later.speedKph <= 2, `Vitesse au stand ${car.number}`);
 }
 replay.setSpeed(60);
 replay.play();
@@ -125,5 +134,28 @@ const pitSample = data.drivers[12].samples[Math.round(4545 * 2)];
 const pitProgress = replayVisualDistance(pitSample[1], data.session, 53);
 assert.ok(replayPitOffset({ number: 12, progressMeters: pitProgress }, 4545,
   data.session, data.drivers[12].pit, 0) > 12);
+
+const serviceFrame = replay.frame(4487);
+const ocon = serviceFrame.byNumber[31];
+const sainz = serviceFrame.byNumber[55];
+const pitVisual = car => ({ ...car,
+  progressMeters: replayVisualDistance(car.progressMeters, data.session, 53) });
+const oconBox = replayPitOffset(pitVisual(ocon), 4487,
+  data.session, data.drivers[31].pit, 0);
+const sainzTransit = replayPitOffset(pitVisual(sainz), 4487,
+  data.session, data.drivers[55].pit, 0);
+assert.equal(ocon.speedKph, 0);
+assert.ok(sainz.speedKph > 70);
+assert.ok(oconBox >= 17.5 && oconBox <= 18, 'Stopped car sits in the paved working box');
+assert.ok(Math.abs(sainzTransit - 12.5) < .01, 'Moving car stays in the pit fast lane');
+assert.ok(oconBox - sainzTransit > 2.3, 'Service and transit car bodies remain separate');
+const easingBox = replayPitOffset({ ...pitVisual(ocon), speedKph: 20 }, 4487,
+  data.session, data.drivers[31].pit, 0);
+assert.ok(easingBox > sainzTransit && easingBox < oconBox, 'Box entry eases with speed');
+const redFlagCar = pitVisual(parkedA.byNumber[31]);
+assert.equal(replayPitOffset({ ...redFlagCar, speedKph: 0 }, parkedA.timeSec,
+  data.session, data.drivers[31].pit, 0),
+replayPitOffset({ ...redFlagCar, speedKph: 80 }, parkedA.timeSec,
+  data.session, data.drivers[31].pit, 0), 'Red-flag queue keeps its original path');
 
 console.log('Replay historique : grille, interruption, contrôle du temps et arrivée vérifiés.');

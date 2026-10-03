@@ -26,7 +26,12 @@ export function addMonzaGridDetails(THREE, scene, curve, polyline, landmarks, tr
     if (i < gridIndex) travelled += segment;
     total += segment;
   }
-  const gridU = total ? travelled / total : 0;
+  // The source centreline begins at Monza's control/finish line. The separate
+  // standing-start line is 309 m farther along the circuit, so the grid,
+  // gantry and pit complex must use that later station as their local origin.
+  // Keep the finish stripe at station -309: it then lands on the source origin.
+  const controlU = total ? travelled / total : 0;
+  const gridU = trackDistance.behind(controlU, -MONZA_FINISH_BEFORE_START_METERS);
   const up = new THREE.Vector3(0, 1, 0);
   const helper = new THREE.Object3D();
 
@@ -90,9 +95,9 @@ export function addMonzaGridDetails(THREE, scene, curve, polyline, landmarks, tr
   // The pit entry and exit taper into the main straight. The wall and garages
   // follow the track itself; their old straight chord missed it by >100 m.
   const pitSurface = [];
-  for (let s = -310; s < 310; s += 4) {
-    const a = smoothstep(-310, -224, s) * (1 - smoothstep(230, 310, s));
-    const b = smoothstep(-310, -224, s + 4) * (1 - smoothstep(230, 310, s + 4));
+  for (let s = -452; s < 400; s += 4) {
+    const a = smoothstep(-452, -380, s) * (1 - smoothstep(230, 400, s));
+    const b = smoothstep(-452, -380, s + 4) * (1 - smoothstep(230, 400, s + 4));
     // The final polygon keeps the taper continuous without extending any part
     // of the pit lane into the racing surface at the pit entry or exit.
     const x0 = 6.48 + 1.47 * a;

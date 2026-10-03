@@ -6,6 +6,7 @@ const smoothstep = value => {
   const t = clamp01(value);
   return t * t * (3 - 2 * t);
 };
+const wrap = (value, length) => ((value % length) + length) % length;
 
 export function replayVisualDistance(progressMeters, session, totalLaps) {
   const difference = (session.visualPhaseShiftMeters ?? MONZA_FINISH_BEFORE_START_METERS)
@@ -15,14 +16,23 @@ export function replayVisualDistance(progressMeters, session, totalLaps) {
 }
 
 export function replayPitOffset(car, timeSec, session, pitStops, baseOffset) {
-  const stop = pitStops?.find(pit => !pit.redFlagTransit &&
+  const stop = pitStops?.find(pit =>
     timeSec >= pit.tSec - pit.laneDurationSec - 15 && timeSec <= pit.tSec + 15);
   if (!stop) return baseOffset;
   let station = ((car.progressMeters % session.trackLengthMeters) + session.trackLengthMeters) % session.trackLengthMeters;
   if (station > session.trackLengthMeters - 600) station -= session.trackLengthMeters;
-  const entry = smoothstep((station + 370) / 150);
-  const exit = 1 - smoothstep((station - 220) / 110);
-  const pitLane = car.number === 12 ? 15.2 : 12.5;
+  const entry = stop.redFlagTransit
+    ? smoothstep((station + 450) / 70)
+    : smoothstep((station + 370) / 150);
+  const exit = stop.redFlagTransit
+    ? 1 - smoothstep((station - 230) / 170)
+    : 1 - smoothstep((station - 220) / 110);
+  const transitLane = stop.redFlagTransit ? 17.5 : car.number === 12 ? 15.2 : 12.5;
+  // A stopped service car sits in the working box while other cars pass in
+  // the fast lane. The box lies on the modeled paved apron (x=15.1–19.2 m).
+  const service = stop.redFlagTransit || !Number.isFinite(car.speedKph)
+    ? 0 : 1 - smoothstep((car.speedKph - 8) / 24);
+  const pitLane = transitLane + (18 - transitLane) * service;
   return baseOffset + (pitLane - baseOffset) * entry * exit;
 }
 
@@ -74,6 +84,40 @@ export function computeReplayPlacements(cars, gridU, trackGap, sourceLapMeters =
       const placement = placements.get(car.number);
       placement.offset += (target - placement.offset) * closeness * afterStart;
     }
+  }
+
+  // Source progress differs by a whole lap for a lapped car, although both
+  // cars can occupy the same piece of road. Start spreading before the gap
+  // closes; the lateral rate limiter otherwise has too little time to react.
+  // Pair weights fade continuously as cars separate, so group membership
+  // cannot change the target lane in a single frame.
+  if (ordered.length < 2) return placements;
+  const metresAt = trackGap.metresAt ?? (u => u * trackGap.lengthMeters);
+  const physical = ordered.map(car => ({
+    car, station: metresAt(placements.get(car.number).u),
+  }));
+  for (const current of physical) {
+    let neighbours = 0;
+    let rank = 0;
+    for (const other of physical) {
+      if (other === current) continue;
+      const gap = wrap(other.station - current.station + trackGap.lengthMeters / 2,
+        trackGap.lengthMeters) - trackGap.lengthMeters / 2;
+      const closingSpeed = Math.max(0, (gap >= 0
+        ? current.car.speedKph - other.car.speedKph
+        : other.car.speedKph - current.car.speedKph) / 3.6) || 0;
+      const response = Math.min(90, 30 + closingSpeed);
+      const weight = 1 - smoothstep((Math.abs(gap) - 12) / (response - 12));
+      neighbours += weight;
+      rank += Math.sign(other.car.number - current.car.number) * weight;
+    }
+    if (neighbours < 1e-6) continue;
+    const halfSpan = Math.min(4.3, 2.7 + .8 * (neighbours - 1));
+    const target = halfSpan * rank / neighbours;
+    const strength = smoothstep(neighbours)
+      * smoothstep((current.car.progressMeters - 90) / 90);
+    const placement = placements.get(current.car.number);
+    placement.offset += (target - placement.offset) * strength;
   }
   return placements;
 }

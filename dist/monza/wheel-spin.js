@@ -108,6 +108,10 @@ export function bindWheelSpin(THREE, car) {
 
   for (const object of parts) {
     const source = object.geometry;
+    // The tyre is the exterior wheel silhouette. Its inner barrel, brake and
+    // spoke meshes sit inside it; drawing each into the shadow map multiplies
+    // shadow draw calls by eight for every car without changing the road shadow.
+    const shadowCaster = (object.userData?.name || object.name?.replaceAll('_', ' ')) === 'Pirelli slick rubber';
 
     // GLB nodes are at identity today; baking the relative transform also
     // keeps the split correct if the asset gains nested groups later.
@@ -130,7 +134,7 @@ export function bindWheelSpin(THREE, car) {
 
       const part = new THREE.Mesh(geometry, object.material);
       part.name = `${object.name} ${WHEELS[wheelIndex].key}`;
-      part.castShadow = object.castShadow;
+      part.castShadow = object.castShadow && shadowCaster;
       part.receiveShadow = object.receiveShadow;
       pivots[wheelIndex].add(part);
       newGeometries.push(geometry);

@@ -37,11 +37,12 @@ const replayGear = document.querySelector('#replay-gear');
 const replayThrottle = document.querySelector('#replay-throttle');
 const replayBrake = document.querySelector('#replay-brake');
 const replayOfficialPosition = document.querySelector('#replay-official-position');
-const replaySpeedKph = document.querySelector('#replay-speed-kph');
 const replayGarageLink = document.querySelector('#replay-garage-link');
 const raceHud = document.querySelector('#race-hud');
+const raceHudToggle = document.querySelector('#race-hud-toggle');
 const raceLabel = raceHud.querySelector('.race-label');
 const raceHudCode = raceHud.querySelector('.race-hud-code');
+const raceSpeedLabel = raceHud.querySelector('.race-speed-label');
 const raceSpeed = document.querySelector('#race-speed');
 const raceLap = document.querySelector('#race-lap');
 const raceLapLabel = document.querySelector('#race-lap-label');
@@ -56,6 +57,10 @@ const gestureHint = document.querySelector('.gesture-hint');
 const exploreHint = gestureHint.innerHTML;
 const controlHelp = document.querySelector('#control-help');
 const defaultControlHelp = controlHelp?.textContent;
+const immersiveToggle = document.querySelector('#immersive-toggle');
+const compactControls = document.querySelector('#compact-controls');
+const controlsToggle = document.querySelector('#controls-toggle');
+const quickPause = document.querySelector('#quick-pause');
 
 const cameraModes = ['Poursuite', 'TV', 'Hélico'];
 const replayNames = Object.freeze(Object.fromEntries(carCatalog.map(car => [car.number, car.shortName])));
@@ -171,6 +176,7 @@ if (renderer) {
   let cameraMode = 0;
   let introPlayed = false;
   let lastTime = performance.now();
+  document.addEventListener('visibilitychange', () => { lastTime = performance.now(); });
   let historicalReplay = null;
   let replayDataPromise = null;
   let replayActive = false;
@@ -185,16 +191,60 @@ if (renderer) {
   const replayEntityPositions = new Map();
   const freeEntityPositions = new Map();
 
+  function setRaceHudCompact(compact) {
+    raceHud.classList.toggle('is-compact', compact);
+    raceHudToggle.setAttribute('aria-expanded', String(!compact));
+    raceHudToggle.setAttribute('aria-label', compact ? 'Afficher toutes les statistiques de course' : 'Réduire les statistiques de course');
+    raceHudToggle.textContent = compact ? 'Plus' : 'Moins';
+  }
+
+  function setControlsExpanded(expanded) {
+    atlas.classList.toggle('controls-expanded', expanded);
+    controlsToggle.setAttribute('aria-expanded', String(expanded));
+    controlsToggle.textContent = expanded ? 'Réduire les commandes' : 'Commandes';
+  }
+
+  function setImmersive(immersive) {
+    atlas.classList.toggle('is-immersive', immersive);
+    immersiveToggle.setAttribute('aria-pressed', String(immersive));
+    immersiveToggle.setAttribute('aria-label', immersive ? 'Afficher les panneaux et les commandes de course' : 'Masquer les panneaux et les commandes de course');
+    immersiveToggle.textContent = immersive ? 'Afficher l’interface' : 'Mode immersion';
+    if (immersive) immersiveToggle.focus({ preventScroll: true });
+  }
+
+  function beginSessionUI() {
+    if (!atlas.classList.contains('is-session')) {
+      setControlsExpanded(false);
+      setImmersive(false);
+      setRaceHudCompact(true);
+    }
+    atlas.classList.add('is-session');
+    immersiveToggle.hidden = false;
+    compactControls.hidden = false;
+  }
+
+  function endSessionUI() {
+    atlas.classList.remove('is-session');
+    setControlsExpanded(false);
+    setImmersive(false);
+    immersiveToggle.hidden = true;
+    compactControls.hidden = true;
+  }
+
   function setReplayPanelCompact(compact) {
     if (!replayPanel || !replayPanelToggle) return;
+    if (compact && replayPanel.contains(document.activeElement)
+      && document.activeElement !== replayPanelToggle) {
+      replayPanelToggle.focus({ preventScroll: true });
+    }
     replayPanel.classList.toggle('is-compact', compact);
     replayPanelToggle.setAttribute('aria-expanded', String(!compact));
-    replayPanelToggle.setAttribute('aria-label', compact ? 'Afficher les détails du replay' : 'Réduire les détails du replay');
-    replayPanelToggle.textContent = compact ? 'Détails' : 'Réduire';
+    replayPanelToggle.setAttribute('aria-label', compact ? 'Ouvrir la régie' : 'Fermer la régie');
+    replayPanelToggle.textContent = compact ? 'Régie' : 'Fermer';
     if (replayGuide) replayGuide.textContent = compact
-      ? 'Lecture lance la course · le curseur choisit un moment. Touchez Détails pour suivre une autre voiture.'
+      ? 'Ouvrez la régie pour contrôler le replay et choisir une voiture.'
       : window.matchMedia('(max-width: 760px)').matches
-        ? 'Choisissez une voiture dans le classement. Réduire revient au circuit et aux commandes.'
+        ? 'Choisissez une voiture dans le classement. Fermer revient au circuit et aux commandes.'
         : 'Lecture lance la course · le curseur choisit un moment · le classement change la voiture suivie.';
   }
 
@@ -220,7 +270,8 @@ if (renderer) {
 
   function replayRaceStatus(timeSec, selected) {
     const data = historicalReplay.data;
-    if (replayPauseAt(timeSec)) return 'DRAPEAU ROUGE · Course interrompue';
+    if (replayPauseAt(timeSec)) return selected?.speedKph > 5
+      ? 'DRAPEAU ROUGE · Retour aux stands' : 'DRAPEAU ROUGE · Course interrompue';
     if (timeSec >= historicalReplay.durationSec) return 'ARRIVÉE · Replay terminé';
     const recentRetirement = Object.values(data.drivers).find(driver => driver.status === 'retired'
       && timeSec >= driver.finishSec && timeSec < driver.finishSec + 18);
@@ -284,7 +335,7 @@ if (renderer) {
     }
     raceHudCode.textContent = `${replayNames[selected.number].toUpperCase()} / ${selected.number}`;
     raceSpeed.textContent = Math.round(selected.speedKph).toString();
-    if (replaySpeedKph) replaySpeedKph.textContent = Math.round(selected.speedKph).toString();
+    if (quickPause) quickPause.textContent = historicalReplay.playing ? 'Ⅱ Pause' : '▶ Lecture';
     raceLap.textContent = `TOUR ${selected.lap} / ${replayTotalLaps}`;
     const lapDistance = replayLapDistance(selected.progressMeters, historicalReplay.data.session, selected.finished);
     raceDistance.textContent = `${(lapDistance / 1000).toFixed(2).replace('.', ',')} / 5,79 KM`;
@@ -292,7 +343,9 @@ if (renderer) {
     if (raceLapTime) raceLapTime.textContent = formatLapTime(selected.lapTimeSec);
     if (raceLastLap) raceLastLap.textContent = formatLapTime(selected.lastLapSec);
     const selectedController = replayCars()[selected.number]?.controller;
-    if (raceSection) raceSection.textContent = pause ? 'Course interrompue' : selectedController?.stats.sectionName || 'Monza';
+    if (raceSection) raceSection.textContent = pause
+      ? selected.speedKph > 5 ? 'Retour aux stands' : 'Course interrompue'
+      : selectedController?.stats.sectionName || 'Monza';
     if (raceLapLabel) raceLapLabel.textContent = 'TOUR OFFICIEL';
     if (replayGear) replayGear.textContent = selected.gear > 0 ? String(selected.gear) : 'N';
     if (replayThrottle) replayThrottle.textContent = `${Math.round(selected.throttlePct)} %`;
@@ -300,7 +353,7 @@ if (renderer) {
     if (replayOfficialPosition) replayOfficialPosition.textContent = selected.retired ? 'ABANDON' : `P${selected.officialPosition ?? '—'} / 22`;
   }
 
-  function placeReplayFrame(frame, snapCamera = false, snapPlacement = false) {
+  function placeReplayFrame(frame, snapCamera = false, snapPlacement = false, cameraDt = .05) {
     if (!historicalReplay || !trackGap) return;
     const selected = frame.byNumber[selectedReplayNumber];
     if (selected?.ended && frame.timeSec > historicalReplay.data.drivers[selectedReplayNumber].finishSec + 1) {
@@ -351,7 +404,7 @@ if (renderer) {
     if (snapCamera || historicalReplay.playing) {
       if (snapCamera) cameraMove = null;
       const followed = replayCars()[selectedReplayNumber]?.controller?.stats;
-      if (followed) followRaceCamera(followed, frame.byNumber[selectedReplayNumber]?.speedKph || 0, .05, snapCamera);
+      if (followed) followRaceCamera(followed, frame.byNumber[selectedReplayNumber]?.speedKph || 0, cameraDt, snapCamera);
     }
     if (frame.timeSec >= historicalReplay.durationSec) {
       controls.enabled = true;
@@ -389,6 +442,7 @@ if (renderer) {
     }
     if (replayPanel) replayPanel.hidden = true;
     setReplayPanelCompact(false);
+    endSessionUI();
     if (replayButton) {
       replayButton.textContent = '◷  Replay GP 2026';
       replayButton.setAttribute('aria-pressed', 'false');
@@ -398,7 +452,8 @@ if (renderer) {
     savedWetModeForReplay = false;
     raceHud.hidden = true;
     raceHudCode.textContent = `${replayNames[requestedReplayNumber].toUpperCase()} / ${requestedReplayNumber}`;
-    raceLabel.innerHTML = '<span class="race-live" aria-hidden="true"></span> SIMULATION DE COURSE';
+    raceLabel.innerHTML = '<span class="race-live" aria-hidden="true"></span> STATS & TEMPS';
+    raceSpeedLabel.textContent = 'VITESSE INSTANTANÉE';
     if (raceLapLabel) raceLapLabel.textContent = 'TOUR';
     controls.enabled = true;
     gestureHint.innerHTML = exploreHint;
@@ -438,7 +493,7 @@ if (renderer) {
       document.querySelector('.replay-badge').textContent = `${carCatalog.length} VOITURES`;
       document.querySelector('.replay-ranking-head span').textContent = `Position officielle · choisir une voiture à suivre`;
       document.querySelector('.replay-rankings').setAttribute('aria-label', `Classement officiel des ${carCatalog.length} voitures affichées`);
-      document.querySelector('.replay-source').innerHTML = `Positions longitudinales, chronos, vitesse et télémétrie historiques issus d’<a href="https://openf1.org/docs/" target="_blank" rel="noopener noreferrer">OpenF1</a> (source non officielle). ${carCatalog.length} voitures affichées ; rang officiel sur toute la grille. Trajectoire latérale et passages aux stands approximés en 3D ; retour aux stands sous drapeau rouge non représenté.`;
+      document.querySelector('.replay-source').innerHTML = `Temps, rangs et télémétrie issus d’<a href="https://openf1.org/docs/" target="_blank" rel="noopener noreferrer">OpenF1</a> (source non officielle). ${carCatalog.length} voitures affichées ; mesures invalides estimées sur des tours valides du même pilote ; positions 3D recalées sur les passages de ligne. Trajectoires latérales et voie des stands approximatives.`;
       replayTotalLaps = Math.max(...historicalReplay.drivers.map(driver => driver.laps?.length || 0));
       replayActive = true;
       lastReplayRankingKey = '';
@@ -451,21 +506,23 @@ if (renderer) {
       savedWetModeForReplay = wetMode;
       if (wetMode) weatherButton?.click();
       if (replayPanel) replayPanel.hidden = false;
-      setReplayPanelCompact(window.matchMedia('(max-width: 760px)').matches);
+      beginSessionUI();
+      setReplayPanelCompact(true);
       if (replayButton) {
         replayButton.textContent = '✕  Quitter le replay';
         replayButton.setAttribute('aria-pressed', 'true');
       }
       if (weatherButton) weatherButton.disabled = true;
       raceHud.hidden = false;
-      raceLabel.textContent = 'REPLAY · MONZA 2026';
+      raceLabel.textContent = 'STATS & TEMPS';
+      raceSpeedLabel.textContent = 'VITESSE TÉLÉMÉTRIE';
       cameraMove = null;
       if (cameraModeButton) {
         cameraModeButton.hidden = false;
         cameraModeButton.disabled = false;
       }
       placeReplayFrame(historicalReplay.frame(), true, true);
-      replayPanel?.focus({ preventScroll: true });
+      replayPanelToggle?.focus({ preventScroll: true });
       lastTime = performance.now();
     } catch (error) {
       if (requestId !== replayRequestId) return;
@@ -502,7 +559,8 @@ if (renderer) {
     controls.enabled = true;
     raceButton.textContent = '▶  Reprendre la simulation';
     raceButton.setAttribute('aria-pressed', 'false');
-    raceLabel.textContent = 'SIMULATION EN PAUSE';
+    raceLabel.textContent = 'STATS · PAUSE';
+    quickPause.textContent = '▶ Reprendre';
     gestureHint.innerHTML = exploreHint;
   }
 
@@ -519,9 +577,10 @@ if (renderer) {
     lastRaceDistance = 0;
     controls.enabled = true;
     raceHud.hidden = true;
+    endSessionUI();
     raceButton.textContent = '▶  Simulation libre';
     raceButton.setAttribute('aria-pressed', 'false');
-    raceLabel.innerHTML = '<span class="race-live" aria-hidden="true"></span> SIMULATION DE COURSE';
+    raceLabel.innerHTML = '<span class="race-live" aria-hidden="true"></span> STATS & TEMPS';
     gestureHint.innerHTML = exploreHint;
     camera.fov = 41;
     camera.updateProjectionMatrix();
@@ -554,8 +613,11 @@ if (renderer) {
     controls.enabled = false;
     raceButton.textContent = 'Ⅱ  Pause simulation';
     raceButton.setAttribute('aria-pressed', 'true');
-    raceLabel.innerHTML = '<span class="race-live" aria-hidden="true"></span> SIMULATION DE COURSE';
+    raceLabel.innerHTML = '<span class="race-live" aria-hidden="true"></span> STATS & TEMPS';
+    raceSpeedLabel.textContent = 'VITESSE INSTANTANÉE';
     raceHud.hidden = false;
+    beginSessionUI();
+    quickPause.textContent = 'Ⅱ Pause';
     updateCameraHint();
     if (cameraModeButton) {
       cameraModeButton.hidden = false;
@@ -747,6 +809,30 @@ if (renderer) {
   replayPanelToggle?.addEventListener('click', () => {
     setReplayPanelCompact(!replayPanel.classList.contains('is-compact'));
   });
+  raceHudToggle?.addEventListener('click', () => {
+    setRaceHudCompact(!raceHud.classList.contains('is-compact'));
+  });
+  controlsToggle?.addEventListener('click', () => {
+    setControlsExpanded(!atlas.classList.contains('controls-expanded'));
+  });
+  quickPause?.addEventListener('click', () => {
+    if (replayActive) replayToggle?.click();
+    else if (raceStarted) raceButton.click();
+  });
+  immersiveToggle?.addEventListener('click', () => {
+    setImmersive(!atlas.classList.contains('is-immersive'));
+  });
+  document.addEventListener('keydown', event => {
+    if (!atlas.classList.contains('is-session')) return;
+    if (event.key === 'Escape' && atlas.classList.contains('is-immersive')) {
+      event.preventDefault();
+      setImmersive(false);
+    } else if (event.key.toLowerCase() === 'i' && !event.altKey && !event.ctrlKey && !event.metaKey
+      && !event.target.closest('input, select, textarea, [contenteditable="true"]')) {
+      event.preventDefault();
+      setImmersive(!atlas.classList.contains('is-immersive'));
+    }
+  });
   replayToggle?.addEventListener('click', () => {
     if (!replayActive || !historicalReplay) return;
     if (historicalReplay.playing) pauseReplay();
@@ -827,7 +913,8 @@ if (renderer) {
   function followRaceCamera(cameraStats, speedKph, dt, snap = false) {
     const forward = cameraStats.tangent;
     const side = new THREE.Vector3(forward.z, 0, -forward.x);
-    const pitLaneView = cameraStats.entry?.pitLaneStart && cameraStats.distanceMeters < 310;
+    const pitLaneView = cameraStats.lateralOffset > 7
+      || (cameraStats.entry?.pitLaneStart && cameraStats.distanceMeters < 310);
     const desiredPosition = cameraStats.position.clone();
     const desiredTarget = cameraStats.position.clone();
     const narrowView = camera.aspect < .75;
@@ -867,27 +954,36 @@ if (renderer) {
 
   function animate(now) {
     requestAnimationFrame(animate);
-    const dt = Math.min(.05, Math.max(0, (now - lastTime) / 1000));
+    const elapsed = Math.max(0, (now - lastTime) / 1000);
     lastTime = now;
+    if (document.hidden) return;
+    const motionDt = Math.min(.1, elapsed);
 
     if (replayActive && historicalReplay?.playing) {
-      placeReplayFrame(historicalReplay.tick(dt));
+      // Historical playback follows wall time even when a heavy frame takes >50 ms.
+      placeReplayFrame(historicalReplay.tick(elapsed), false, false, motionDt);
     } else if (racing && world && raceController) {
-      const stats = raceController.update(dt);
-      raceElapsedSec += dt;
+      // Integrate the free simulation in stable steps, then render its final pose once.
+      let remaining = Math.min(elapsed, .5);
+      let stats = raceController.stats;
+      while (remaining > 0) {
+        const step = Math.min(.1, remaining);
+        stats = raceController.update(step);
+        raceElapsedSec += step;
+        for (const instance of carInstances.values()) {
+          if (!instance.entry.pitLaneStart || raceElapsedSec < instance.entry.pitStartDelaySec) continue;
+          instance.controller.start();
+          const pitStats = instance.controller.update(step);
+          instance.wheels?.update(pitStats.distanceMeters - instance.lastRaceDistance);
+          instance.lastRaceDistance = pitStats.distanceMeters;
+        }
+        remaining -= step;
+      }
       if (wheelAnimator) wheelAnimator.update(stats.distanceMeters - lastRaceDistance);
       lastRaceDistance = stats.distanceMeters;
       for (const instance of carInstances.values()) {
         if (instance.entry.number === carByKey.redbull.number) continue;
-        if (instance.entry.pitLaneStart) {
-          if (raceElapsedSec >= instance.entry.pitStartDelaySec) {
-            instance.controller.start();
-            const pitStats = instance.controller.update(dt);
-            instance.wheels?.update(pitStats.distanceMeters - instance.lastRaceDistance);
-            instance.lastRaceDistance = pitStats.distanceMeters;
-          }
-          continue;
-        }
+        if (instance.entry.pitLaneStart) continue;
         const gap = (instance.entry.gridPosition - carByKey.redbull.gridPosition) * GRID_SLOT_SPACING;
         instance.controller.placeAt(trackGap.behind(stats.progress, gap), stats.distanceMeters);
         instance.wheels?.update(stats.distanceMeters - instance.lastRaceDistance);
@@ -901,8 +997,8 @@ if (renderer) {
         offset: instance.controller.stats.lateralOffset,
       }));
       const entityPoses = resolveEntitySpacing(traffic, trackGap, freeEntityPositions, {
-        lateralStep: Math.min(.18, dt * 4),
-        releaseStep: Math.min(.35, dt * 7),
+        lateralStep: Math.min(.18, motionDt * 4),
+        releaseStep: Math.min(.35, motionDt * 7),
       });
       for (const instance of carInstances.values()) {
         const entity = entityPoses.get(instance.entry.number);
@@ -912,10 +1008,10 @@ if (renderer) {
       }
       const cameraStats = focusCarKey
         ? carInstances.get(carByKey[focusCarKey].number)?.controller?.stats || stats : stats;
-      followRaceCamera(cameraStats, cameraStats.speedKmh, dt);
+      followRaceCamera(cameraStats, cameraStats.speedKmh, motionDt);
       updateRaceHud(cameraStats);
     } else if (flying && world) {
-      lapProgress = (lapProgress + dt / 80) % 1;
+      lapProgress = (lapProgress + motionDt / 80) % 1;
       const at = world.curve.getPointAt(lapProgress);
       const ahead = world.curve.getPointAt((lapProgress + .008) % 1);
       const dir = ahead.clone().sub(at).normalize();
@@ -939,7 +1035,7 @@ if (renderer) {
       world.overviewAccent.opacity = Math.max(0, Math.min(.82, (distance - 950) / 1900));
     }
     sky.follow(camera.position);
-    weather?.update(dt, camera);
+    weather?.update(motionDt, camera);
     renderer.render(scene, camera);
   }
   requestAnimationFrame(animate);

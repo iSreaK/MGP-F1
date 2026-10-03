@@ -112,8 +112,8 @@ function makeAnchors(laps, startOffsetMeters, pauses, finish, partialDistanceMet
       ? laps[index + 1].t
       : finish;
     if (!(end > lap.t)) throw new Error(`Tour ${lap.lap_number} non chronologique.`);
-    // A lap line crossed under a red flag is an official timing event, but the
-    // visual replay is frozen. Reconcile at the next post-restart line instead.
+    // The legacy GPS path omits pit-lane transit under red flag. The speed-based
+    // path below inserts the official line crossing during that transit.
     if (!pauseAt(pauses, end)) {
       const progress = index === laps.length - 1 && partialDistanceMeters !== null
         ? (lap.lap_number - 1) * TRACK_LENGTH_METERS + partialDistanceMeters
@@ -242,7 +242,7 @@ function smoothProgress(frameTimes, segments, anchors, pauses) {
       values[index] = clamp(values[index], values[index + 1] - maximumStep, values[index + 1]);
     }
   }
-  return new Map(frameTimes.map(t => [t, values[indexByTime.get(t)]]));
+  return new Map(allTimes.map((t, index) => [t, values[index]]));
 }
 
 function telemetryAt(rows, t, index) {
@@ -254,6 +254,193 @@ function telemetryAt(rows, t, index) {
     : Number(a[field]) || 0;
   return [Math.round(interpolate('speed')), Math.round(interpolate('throttle')),
     Number(a.brake) || 0, Number(a.n_gear) || 0];
+}
+
+const staleTelemetry = row => row.throttle === 104 && row.brake === 104;
+
+function validTelemetryAt(rows, t) {
+  const index = findBefore(rows, t);
+  if (index < 0 || index >= rows.length - 1) return null;
+  const a = rows[index], b = rows[index + 1];
+  if (b.t - a.t > 1200 || staleTelemetry(a) || staleTelemetry(b)) return null;
+  const fraction = clamp((t - a.t) / (b.t - a.t), 0, 1);
+  const mix = field => a[field] + (b[field] - a[field]) * fraction;
+  return { speed: mix('speed'), throttle: mix('throttle'),
+    brake: mix('brake'), n_gear: fraction < .5 ? a.n_gear : b.n_gear };
+}
+
+function sectorBounds(lap, end) {
+  const seconds = [lap.duration_sector_1, lap.duration_sector_2,
+    lap.duration_sector_3];
+  if (seconds.some(value => !Number.isFinite(value) || value <= 0)
+    || Math.abs(seconds.reduce((a, b) => a + b, 0) * 1000 - (end - lap.t)) > 2000) {
+    return null;
+  }
+  return [lap.t, lap.t + seconds[0] * 1000,
+    lap.t + (seconds[0] + seconds[1]) * 1000, end];
+}
+
+function remapSectorTime(t, source, target) {
+  let sector = 2;
+  for (let index = 0; index < 3; index++) {
+    if (t < source[index + 1]) { sector = index; break; }
+  }
+  const fraction = clamp((t - source[sector])
+    / (source[sector + 1] - source[sector]), 0, 1);
+  return target[sector] + fraction * (target[sector + 1] - target[sector]);
+}
+
+function repairStaleTelemetry(rows, laps, finish) {
+  const repaired = rows.map(row => ({ ...row }));
+  const summary = { blocks: 0, seconds: 0, rows: 0, templateBlocks: 0,
+    fallbackBlocks: 0, sanitizedChannelRows: 0, inferredBrakeRows: 0 };
+  const lapEnd = index => index + 1 < laps.length ? laps[index + 1].t : finish;
+  for (let index = 0; index < rows.length;) {
+    if (!staleTelemetry(rows[index]) || rows[index].speed <= 60
+      || rows[index].t >= finish) { index++; continue; }
+    let first = index;
+    const plateauSpeed = rows[index].speed;
+    while (index < rows.length && staleTelemetry(rows[index])
+      && rows[index].speed > 60 && rows[index].t < finish) index++;
+    while (first > 1 && (rows[first - 1].throttle > 100 || rows[first - 1].brake > 100)
+      && Math.abs(rows[first - 1].speed - plateauSpeed) <= 3
+      && rows[first].t - rows[first - 1].t < 1200) first--;
+    // Some packets clear their invalid sensor flags one sample before the
+    // cached speed jumps to the true corner speed. Include that stale tail.
+    while (index + 1 < rows.length && Math.abs(rows[index].speed - plateauSpeed) <= 3
+      && rows[index].speed - rows[index + 1].speed > 100
+      && rows[index + 1].t - rows[index].t < 1000) index++;
+    const last = index - 1;
+    const sharpDrop = index < rows.length && rows[last].speed - rows[index].speed > 90
+      && rows[index].t - rows[last].t < 1000;
+    if ((rows[last].t - rows[first].t < 1500 && !sharpDrop)
+      || first === 0 || index >= rows.length) continue;
+    const left = rows[first - 1], right = rows[index];
+    if (staleTelemetry(left) || staleTelemetry(right)
+      || !Number.isFinite(left.speed) || !Number.isFinite(right.speed)) continue;
+    const lapIndex = findBefore(laps, (left.t + right.t) / 2);
+    if (lapIndex < 0) continue;
+    const currentLap = laps[lapIndex], currentEnd = lapEnd(lapIndex);
+    const duration = currentEnd - currentLap.t;
+    const currentSectors = sectorBounds(currentLap, currentEnd);
+    const candidates = [];
+    if (duration >= 70000 && duration <= 140000 && right.t <= currentEnd) {
+      for (let other = 0; other < laps.length - 1; other++) {
+        if (other === lapIndex) continue;
+        const otherDuration = lapEnd(other) - laps[other].t;
+        if (otherDuration < 70000 || otherDuration > 105000) continue;
+        const otherSectors = sectorBounds(laps[other], lapEnd(other));
+        let score = Math.abs(other - lapIndex);
+        let mappedTime;
+        if (currentSectors && otherSectors) {
+          let comparable = true;
+          for (let sector = 0; sector < 3; sector++) {
+            if (left.t >= currentSectors[sector + 1]
+              || right.t < currentSectors[sector]) continue;
+            const sourceDuration = currentSectors[sector + 1] - currentSectors[sector];
+            const donorDuration = otherSectors[sector + 1] - otherSectors[sector];
+            const difference = Math.abs(donorDuration / sourceDuration - 1);
+            if (difference > .15) { comparable = false; break; }
+            score += difference * 20;
+          }
+          if (!comparable) continue;
+          mappedTime = t => remapSectorTime(t, currentSectors, otherSectors);
+        } else {
+          const difference = Math.abs(otherDuration / duration - 1);
+          if (difference > .08) continue;
+          score += difference * 20;
+          mappedTime = t => laps[other].t
+            + (t - currentLap.t) * otherDuration / duration;
+        }
+        let clean = true;
+        for (let t = left.t; t <= right.t; t += 1000) {
+          if (!validTelemetryAt(rows, mappedTime(t))) { clean = false; break; }
+        }
+        if (clean && validTelemetryAt(rows, mappedTime(right.t))) {
+          candidates.push({ other, mappedTime, score });
+        }
+      }
+    }
+    candidates.sort((a, b) => a.score - b.score);
+    const templates = candidates.slice(0, 3);
+    const templateAt = t => {
+      const profiles = templates.map(candidate =>
+        validTelemetryAt(rows, candidate.mappedTime(t)));
+      if (profiles.some(profile => !profile)) return null;
+      return { speed: median(profiles.map(profile => profile.speed)),
+        throttle: median(profiles.map(profile => profile.throttle)),
+        brake: median(profiles.map(profile => profile.brake)),
+        n_gear: Math.round(median(profiles.map(profile => profile.n_gear))) };
+    };
+    const leftTemplate = templates.length ? templateAt(left.t) : null;
+    const rightTemplate = templates.length ? templateAt(right.t) : null;
+    const useTemplate = !!leftTemplate && !!rightTemplate;
+    for (let at = first; at <= last; at++) {
+      const row = rows[at];
+      const fraction = (row.t - left.t) / (right.t - left.t);
+      const profile = useTemplate ? templateAt(row.t) : null;
+      const speed = profile
+        ? profile.speed + (left.speed - leftTemplate.speed) * (1 - fraction)
+          + (right.speed - rightTemplate.speed) * fraction
+        : left.speed + (right.speed - left.speed) * fraction;
+      repaired[at].speed = clamp(round(speed), 0, 380);
+      repaired[at].throttle = profile
+        ? clamp(Math.round(profile.throttle), 0, 100)
+        : clamp(Math.round(left.throttle + (right.throttle - left.throttle) * fraction), 0, 100);
+      repaired[at].brake = profile
+        ? clamp(Math.round(profile.brake), 0, 100)
+        : clamp(Math.round(left.brake + (right.brake - left.brake) * fraction), 0, 100);
+      repaired[at].n_gear = profile ? profile.n_gear
+        : fraction < .5 ? left.n_gear : right.n_gear;
+    }
+    for (let at = first; at <= last; at++) {
+      const before = repaired[Math.max(first - 1, at - 1)];
+      const after = repaired[Math.min(last + 1, at + 1)];
+      const seconds = (after.t - before.t) / 1000;
+      const deceleration = seconds > 0 ? (before.speed - after.speed) / seconds : 0;
+      if (deceleration > 20 && repaired[at].speed > 60
+        && repaired[at].brake < 20) {
+        // The sensor packet is unavailable; sustained deceleration makes a
+        // braking estimate safer than displaying simultaneous full throttle.
+        repaired[at].brake = clamp(Math.round((deceleration - 15) * 4), 20, 100);
+        repaired[at].throttle = Math.min(repaired[at].throttle, 30);
+        summary.inferredBrakeRows++;
+      }
+    }
+    summary.blocks++;
+    summary.seconds += (rows[last].t - rows[first].t) / 1000;
+    summary.rows += last - first + 1;
+    if (useTemplate) summary.templateBlocks++;
+    else summary.fallbackBlocks++;
+  }
+  const sanitized = new Set();
+  for (const field of ['throttle', 'brake']) {
+    const nextValid = new Array(repaired.length);
+    let next = -1;
+    for (let index = repaired.length - 1; index >= 0; index--) {
+      nextValid[index] = next;
+      if (repaired[index][field] >= 0 && repaired[index][field] <= 100) next = index;
+    }
+    let previous = -1;
+    for (let index = 0; index < repaired.length; index++) {
+      const row = repaired[index];
+      if (row[field] >= 0 && row[field] <= 100) { previous = index; continue; }
+      const after = nextValid[index];
+      const beforeRow = previous >= 0 ? repaired[previous] : null;
+      const afterRow = after >= 0 ? repaired[after] : null;
+      const span = beforeRow && afterRow ? afterRow.t - beforeRow.t : Infinity;
+      const value = span <= 5000
+        ? beforeRow[field] + (afterRow[field] - beforeRow[field])
+          * (row.t - beforeRow.t) / span
+        : beforeRow && row.t - beforeRow.t <= 2000 ? beforeRow[field]
+          : afterRow && afterRow.t - row.t <= 2000 ? afterRow[field] : 0;
+      row[field] = clamp(Math.round(value), 0, 100);
+      sanitized.add(index);
+    }
+  }
+  summary.sanitizedChannelRows = sanitized.size;
+  summary.seconds = round(summary.seconds, 1);
+  return { rows: repaired, summary };
 }
 
 function officialPositionAt(rows, t, index, fallback) {
@@ -314,6 +501,84 @@ function correctedProgress(rawProgress, startOffset, phaseShift) {
   return rawProgress - phaseShift * firstLapFraction;
 }
 
+function rebuildProgressFromSpeed(driver, frameTimes, phaseShift, gridStops) {
+  const oldProgress = t => correctedProgress(driver.smoothedProgress.get(t),
+    driver.startOffsetMeters, phaseShift);
+  const anchors = driver.anchors.map(anchor => ({
+    t: anchor.t,
+    progress: correctedProgress(anchor.progress, driver.startOffsetMeters, phaseShift),
+    kind: 'lap',
+  }));
+  for (const lap of driver.laps.slice(1)) {
+    if (!pauseAt(driver.pauses, lap.t)) continue;
+    const progress = correctedProgress((lap.lap_number - 1) * TRACK_LENGTH_METERS,
+      driver.startOffsetMeters, phaseShift);
+    anchors.push({ t: lap.t, progress, kind: 'suspended-lap' });
+  }
+  for (const stop of gridStops) {
+    // The raw stop phase is measured against the exact official grid slot.
+    anchors.push({ t: stop.t, progress: stop.rawProgress - stop.phase,
+      kind: stop.label });
+  }
+  anchors.sort((left, right) => left.t - right.t);
+  for (let index = 1; index < anchors.length; index++) {
+    if (!(anchors[index].t > anchors[index - 1].t)
+      || anchors[index].progress < anchors[index - 1].progress - 0.01) {
+      throw new Error(`Ancres télémétriques incompatibles pour ${driver.number}.`);
+    }
+  }
+
+  const times = [...new Set([...frameTimes, ...anchors.map(anchor => anchor.t)])]
+    .sort((left, right) => left - right);
+  const indexByTime = new Map(times.map((t, index) => [t, index]));
+  const telemetryIndex = { value: 0 };
+  const speeds = times.map(t => telemetryAt(driver.carData, t, telemetryIndex)[0] / 3.6);
+  const distance = [0];
+  for (let index = 1; index < times.length; index++) {
+    // Car telemetry remains live while the race is suspended: the cars return
+    // to the pit lane, stop there, and later drive out for the restart.
+    const seconds = (times[index] - times[index - 1]) / 1000;
+    distance.push(distance.at(-1) + (speeds[index - 1] + speeds[index]) / 2 * seconds);
+  }
+  const values = new Map();
+  const fallbackSegments = [];
+  for (let section = 0; section < anchors.length - 1; section++) {
+    const a = anchors[section], b = anchors[section + 1];
+    const first = indexByTime.get(a.t), last = indexByTime.get(b.t);
+    const delta = b.progress - a.progress;
+    const measured = distance[last] - distance[first];
+    const scale = measured > 0 ? delta / measured : 0;
+    const useSpeed = delta > 0 && scale >= .8 && scale <= 1.1;
+    if (delta > 0 && !useSpeed) {
+      fallbackSegments.push({ from: a.kind, to: b.kind,
+        tSec: round((b.t - a.t) / 1000, 1), scale: round(scale, 3) });
+    }
+    const baselineA = useSpeed || delta <= 0 ? 0 : oldProgress(a.t);
+    const baselineB = useSpeed || delta <= 0 ? 0 : oldProgress(b.t);
+    for (let index = first; index <= last; index++) {
+      const t = times[index];
+      let progress;
+      if (delta <= 0) progress = a.progress;
+      else if (useSpeed) progress = a.progress
+        + (distance[index] - distance[first]) * scale;
+      else {
+        // Keep the bounded GPS reconstruction only when telemetry is insufficient
+        // to meet a timing anchor at a physically plausible scale.
+        const blend = (t - a.t) / (b.t - a.t);
+        progress = oldProgress(t) + (a.progress - baselineA) * (1 - blend)
+          + (b.progress - baselineB) * blend;
+      }
+      values.set(t, progress);
+    }
+  }
+  const first = anchors[0], last = anchors.at(-1);
+  for (const t of frameTimes) {
+    if (t < first.t) values.set(t, first.progress);
+    else if (t > last.t) values.set(t, last.progress);
+  }
+  return { values, fallbackSegments };
+}
+
 async function main() {
   const [raceControl, positionRows, intervalRows, pitRows, stintRows, weatherRows] = await Promise.all([
     readJson('race_control.json', true), readJson('position.json', true),
@@ -345,11 +610,13 @@ async function main() {
       .filter(row => Number.isFinite(row.x) && Number.isFinite(row.y)
         && (row.x !== 0 || row.y !== 0)
         && row.t >= laps[0].t - 2000 && row.t <= finish + 2000);
-    const carData = sortedTimed(carRows).filter(row => row.t >= laps[0].t - 2000 && row.t <= finish + 2000);
-    if (locations.length < 100 || carData.length < 100) {
+    const rawCarData = sortedTimed(carRows).filter(row => row.t >= laps[0].t - 2000 && row.t <= finish + 2000);
+    if (locations.length < 100 || rawCarData.length < 100) {
       throw new Error(`Position ou télémétrie insuffisante pour ${driver.number}.`);
     }
-    return { ...driver, laps, finish, locations, carData };
+    const repairedTelemetry = repairStaleTelemetry(rawCarData, laps, finish);
+    return { ...driver, laps, finish, locations, carData: repairedTelemetry.rows,
+      telemetryRepair: repairedTelemetry.summary };
   }));
 
   const start = Math.min(...input.map(driver => driver.laps[0].t));
@@ -370,9 +637,10 @@ async function main() {
       trackLengthMeters: TRACK_LENGTH_METERS,
       pauses: pauses.map(pause => ({ startSec: relativeSeconds(pause.start, start), endSec: relativeSeconds(pause.end, start) })),
       reconstruction: {
-        progress: 'Positions XY approximatives OpenF1, intégrées et recalées sur les tours ; pics limités à 105 m/s. Le placement latéral exact n’est pas fourni.',
-        redFlagTransit: 'Le retour réel aux stands sous drapeau rouge est omis visuellement : les voitures restent figées jusqu’à la reprise.',
-        lapTiming: 'Les dates des tours restent celles de la source ; les passages visuels sont décalés pour aligner les cases des deux départs après la reprise.',
+        progress: 'Vitesses OpenF1 intégrées entre les passages de ligne officiels ; les positions XY servent au calage des grilles. Le placement latéral exact n’est pas fourni.',
+        telemetryRepair: 'Les blocs de capteurs invalides (accélérateur=frein=104) à vitesse élevée sont reconstruits depuis le même secteur de tours propres du pilote ou entre mesures valides voisines. Le freinage est estimé si la décélération réparée est forte mais le canal de frein manque.',
+        redFlagTransit: 'La vitesse OpenF1 reconstitue le retour aux stands puis l’immobilisation sous drapeau rouge. La trajectoire latérale dans la voie des stands est approximée.',
+        lapTiming: 'Les passages de ligne restent aux dates officielles, y compris sous drapeau rouge ; le repère spatial est calé sur les deux grilles après la reprise.',
       },
     },
     // The tuples' position field is the OFFICIAL rank in the full race field.
@@ -385,6 +653,17 @@ async function main() {
     weather: weather.map(row => [relativeSeconds(row.t, start), row.air_temperature,
       row.track_temperature, row.rainfall, row.humidity, row.wind_speed]),
   };
+  result.session.telemetryRepair = input.reduce((total, driver) => {
+    for (const field of ['blocks', 'seconds', 'rows', 'templateBlocks',
+      'fallbackBlocks', 'sanitizedChannelRows', 'inferredBrakeRows']) {
+      total[field] += driver.telemetryRepair[field];
+    }
+    if (driver.telemetryRepair.blocks) total.drivers++;
+    return total;
+  }, { blocks: 0, seconds: 0, rows: 0, templateBlocks: 0,
+    fallbackBlocks: 0, sanitizedChannelRows: 0, inferredBrakeRows: 0,
+    drivers: 0 });
+  result.session.telemetryRepair.seconds = round(result.session.telemetryRepair.seconds, 1);
   const frameTimes = [];
   for (let t = start; t < end; t += FRAME_INTERVAL_MS) frameTimes.push(t);
   frameTimes.push(end);
@@ -400,7 +679,7 @@ async function main() {
     const anchors = makeAnchors(driver.laps, startOffsetMeters, pauses, driver.finish, partialDistanceMeters);
     const segments = anchors.slice(0, -1)
       .map((anchor, index) => makeSegment(anchor, anchors[index + 1], driver.locations, pauses));
-    return { ...driver, startOffsetMeters, anchors, segments,
+    return { ...driver, startOffsetMeters, anchors, segments, pauses,
       smoothedProgress: smoothProgress(frameTimes, segments, anchors, pauses),
       ownPositions: positions.filter(row => row.driver_number === driver.number) };
   });
@@ -439,7 +718,9 @@ async function main() {
   result.session.visualPhaseShiftMeters = round(visualPhaseShiftMeters, 2);
 
   for (const driver of prepared) {
-    const { startOffsetMeters, segments, smoothedProgress, ownPositions } = driver;
+    const { segments, ownPositions } = driver;
+    const reconstructed = rebuildProgressFromSpeed(driver, frameTimes,
+      visualPhaseShiftMeters, gridStops.get(driver.number).filter(Boolean));
     const ownIntervals = intervals.filter(row => row.driver_number === driver.number);
     const ownPit = pit.filter(row => row.driver_number === driver.number);
     const ownStints = stints.filter(row => row.driver_number === driver.number)
@@ -447,11 +728,9 @@ async function main() {
     const samples = [];
     const telemetryIndex = { value: 0 }, positionIndex = { value: 0 };
     for (const t of frameTimes) {
-      const isPaused = !!pauseAt(pauses, t);
       const isFinished = t >= driver.finish;
-      const progress = correctedProgress(smoothedProgress.get(t),
-        startOffsetMeters, visualPhaseShiftMeters);
-      const telemetry = isPaused || isFinished
+      const progress = reconstructed.values.get(t);
+      const telemetry = isFinished
         ? [0, 0, 0, 0]
         : telemetryAt(driver.carData, t, telemetryIndex);
       const officialPosition = ownPositions.length
@@ -464,12 +743,14 @@ async function main() {
       pitLaneStart: !!driver.pitLaneStart,
       status: driver.retiredAt ? 'retired' : 'finished',
       officialCompletedLaps: driver.retiredAt ? driver.laps.at(-1).lap_number - 1 : driver.laps.length,
-      startOffsetMeters: round(startOffsetMeters, 2), finishSec: relativeSeconds(driver.finish, start),
+      startOffsetMeters: round(driver.startOffsetMeters, 2), finishSec: relativeSeconds(driver.finish, start),
       restartGridStops: gridStops.get(driver.number).filter(Boolean).map(stop => ({
         label: stop.label, tSec: relativeSeconds(stop.t, start),
         officialPosition: stop.officialPosition,
         rawXY: [Math.round(stop.xy.x), Math.round(stop.xy.y)],
-        gridErrorMeters: round(signedTrackOffset(stop.phase - visualPhaseShiftMeters), 1),
+        gridErrorMeters: round(signedTrackOffset(samples[Math.round((stop.t - start)
+          / FRAME_INTERVAL_MS)][1] - stop.targetOffset), 1),
+        sourceCalibrationErrorMeters: round(signedTrackOffset(stop.phase - visualPhaseShiftMeters), 1),
       })),
       laps: driver.laps.map(lap => ({ lap: lap.lap_number, startSec: relativeSeconds(lap.t, start),
         durationSec: Number.isFinite(lap.lap_duration) ? round(lap.lap_duration, 3) : null })),
@@ -489,7 +770,10 @@ async function main() {
       if (progressValues[index] < progressValues[index - 1] - 0.001) backwards++;
     }
     const minimum = Math.min(...segments.map(segment => segment.totalDistance));
-    console.log(`${driver.name.padEnd(18)} P${driver.gridPosition.toString().padEnd(2)} ${String(samples.length).padStart(5)} frames · ${driver.laps.length} tours · ${backwards} reculs · segment mini ${Math.round(minimum / 10)} m bruts`);
+    console.log(`${driver.name.padEnd(18)} P${driver.gridPosition.toString().padEnd(2)} ${String(samples.length).padStart(5)} frames · ${driver.laps.length} tours · ${backwards} reculs · ${reconstructed.fallbackSegments.length} segments GPS · segment mini ${Math.round(minimum / 10)} m bruts`);
+    for (const fallback of reconstructed.fallbackSegments) {
+      console.log(`  GPS ${fallback.from} → ${fallback.to} : ${fallback.tSec} s, facteur télémétrique ${fallback.scale}`);
+    }
     if (backwards) throw new Error(`Progression non monotone pour ${driver.number}.`);
   }
 
