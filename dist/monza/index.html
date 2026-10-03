@@ -42,9 +42,57 @@
         <p class="race-speed-label">VITESSE INSTANTANÉE</p>
         <div class="race-readout"><strong id="race-speed">0</strong><span>KM/H</span></div>
         <div class="race-timing"><div><small>TOUR ACTUEL</small><strong id="race-lap-time">00:00.0</strong></div><div><small>DERNIER TOUR</small><strong id="race-last-lap">—</strong></div></div>
-        <div class="race-lap"><div><small>TOUR</small><span id="race-lap">TOUR 1</span></div><div><small>DISTANCE</small><span id="race-distance">0,00 / 5,79 KM</span></div></div>
+        <div class="race-lap"><div><small id="race-lap-label">TOUR</small><span id="race-lap">TOUR 1</span></div><div><small>DISTANCE</small><span id="race-distance">0,00 / 5,79 KM</span></div></div>
         <div class="race-progress" aria-hidden="true"><span id="race-progress"></span></div>
         <p class="race-section"><span>SECTEUR /</span><strong id="race-section">Rettifilo Tribune</strong></p>
+      </section>
+
+      <section class="replay-panel" id="replay-panel" aria-label="Replay du Grand Prix d'Italie 2026" hidden>
+        <div class="replay-head">
+          <div>
+            <p class="replay-kicker">REPLAY HISTORIQUE</p>
+            <h2>MONZA <span>2026</span></h2>
+          </div>
+          <div class="replay-head-actions"><span class="replay-badge">6 VOITURES</span><button type="button" id="replay-panel-toggle" class="replay-panel-toggle" aria-expanded="true" aria-label="Réduire le panneau du replay">−</button></div>
+        </div>
+        <p class="replay-status" id="replay-status" role="status" aria-live="polite">Chargement des données de course…</p>
+        <div class="replay-live-speed"><strong id="replay-speed-kph">0</strong><span>KM/H · voiture suivie</span></div>
+        <div class="replay-controls">
+          <button type="button" id="replay-toggle" class="replay-toggle" aria-label="Lire le replay">▶ Lecture</button>
+          <label for="replay-speed">Vitesse</label>
+          <select id="replay-speed" aria-label="Vitesse de lecture du replay">
+            <option value="1">×1</option>
+            <option value="4">×4</option>
+            <option value="20" selected>×20</option>
+            <option value="60">×60</option>
+          </select>
+        </div>
+        <button type="button" id="replay-skip-pause" class="replay-skip-pause" hidden>Passer l’interruption →</button>
+        <div class="replay-timeline-head">
+          <label for="replay-timeline">TEMPS DE COURSE</label>
+          <output id="replay-clock" for="replay-timeline">00:00 / 00:00</output>
+        </div>
+        <input type="range" id="replay-timeline" min="0" max="1" value="0" step="0.1" aria-label="Avancer dans le replay" />
+        <div class="replay-driver-row">
+          <label for="replay-driver">SUIVRE</label>
+          <select id="replay-driver" aria-label="Voiture suivie par la caméra">
+            <option value="12">Antonelli · 12</option>
+            <option value="3">Verstappen · 3</option>
+            <option value="1">Norris · 1</option>
+            <option value="44">Hamilton · 44</option>
+            <option value="10">Gasly · 10</option>
+            <option value="5">Bortoleto · 5</option>
+          </select>
+        </div>
+        <div class="replay-telemetry" aria-label="Télémétrie de la voiture suivie">
+          <div><span>POS. OFF.</span><strong id="replay-official-position">—</strong></div>
+          <div><span>RAPPORT</span><strong id="replay-gear">—</strong></div>
+          <div><span>GAZ</span><strong id="replay-throttle">—</strong></div>
+          <div><span>FREIN</span><strong id="replay-brake">—</strong></div>
+        </div>
+        <div class="replay-ranking-head"><h3>CLASSEMENT</h3><span>Parmi les 6 · rang officiel indiqué</span></div>
+        <ol class="replay-rankings" id="replay-rankings" aria-label="Classement des six voitures affichées"></ol>
+        <p class="replay-source">Positions longitudinales, chronos, vitesse et télémétrie historiques issus d’<a href="https://openf1.org/docs/" target="_blank" rel="noopener noreferrer">OpenF1</a> (source non officielle). Six voitures affichées ; rang officiel sur toute la grille. Trajectoire latérale et passages aux stands approximés en 3D ; retour aux stands sous drapeau rouge non représenté.</p>
       </section>
 
       <div class="loading" id="loading" role="status" aria-live="polite">
@@ -62,6 +110,7 @@
           <span class="control-label" aria-hidden="true">VUES &amp; SIMULATION <span>01 / MONZA</span></span>
           <div class="actions">
             <button type="button" id="race" class="race-button" disabled aria-pressed="false">▶&nbsp; Course</button>
+            <button type="button" id="replay" class="replay-button" disabled aria-pressed="false">◷&nbsp; Replay GP 2026</button>
             <span class="action-divider" aria-hidden="true"></span>
             <button type="button" id="overview" disabled>Vue générale</button>
             <button type="button" id="grid" disabled>Départ</button>

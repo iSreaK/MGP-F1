@@ -115,6 +115,13 @@ export function bindWheelSpin(THREE, car) {
         pivot.rotation.z = (pivot.rotation.z + angle) % FULL_TURN;
       }
     },
+    // Absolute angle keeps the wheels consistent when the replay is scrubbed
+    // backwards, jumps to a lap, or resumes after a pause.
+    setDistance(distanceMeters) {
+      if (!Number.isFinite(distanceMeters)) return;
+      const angle = (distanceMeters / TYRE_RADIUS) % FULL_TURN;
+      for (const pivot of pivots) pivot.rotation.z = angle;
+    },
     dispose() {
       for (const object of sources) object.visible = true;
       for (const pivot of pivots) car.remove(pivot);

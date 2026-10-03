@@ -6,6 +6,8 @@ import { createTrackGapLookup } from './track-gap.js';
  * below are local metres: +X is the pit side, +Z is the direction of travel.
  */
 export const GRID_SLOT_SPACING = 9.05;
+// Monza's control/finish line is 309 m before the separate start line (FIA).
+export const MONZA_FINISH_BEFORE_START_METERS = 309;
 export const GRID_LANE_CENTER = 2.72;
 
 export function addMonzaGridDetails(THREE, scene, curve, polyline, landmarks, trackY = .30) {
@@ -205,17 +207,18 @@ export function addMonzaGridDetails(THREE, scene, curve, polyline, landmarks, tr
     }
   }
 
-  // Separate chequered finish stripe and its flanking white bars.  The strip
-  // sits on the actual track centreline, not on the pit-building chord.
+  // Monza has separate start and finish/control lines. The chequered stripe is
+  // 309 m before the start, while the grid and gantry remain at station zero.
   const finishQuads = [];
   const tileWidth = 11.5 / 12;
   for (let col = 0; col < 12; col++) {
     for (let row = 0; row < 2; row++) {
-      if ((col + row) % 2 === 0) finishQuads.push([row * .55, (row + 1) * .55, -5.75 + col * tileWidth, -5.75 + (col + 1) * tileWidth]);
+      if ((col + row) % 2 === 0) finishQuads.push([-MONZA_FINISH_BEFORE_START_METERS + row * .55, -MONZA_FINISH_BEFORE_START_METERS + (row + 1) * .55, -5.75 + col * tileWidth, -5.75 + (col + 1) * tileWidth]);
     }
   }
-  surface('Chequered start finish line', white, finishQuads, trackY + .055);
-  surface('Start finish transverse edge', white, [[-1.3, -1.14, -5.75, 5.75], [1.14, 1.30, -5.75, 5.75]], trackY + .055);
+  surface('Chequered control finish line', white, finishQuads, trackY + .055);
+  surface('Finish line transverse edge', white, [[-MONZA_FINISH_BEFORE_START_METERS - 1.3, -MONZA_FINISH_BEFORE_START_METERS - 1.14, -5.75, 5.75], [-MONZA_FINISH_BEFORE_START_METERS + 1.14, -MONZA_FINISH_BEFORE_START_METERS + 1.30, -5.75, 5.75]], trackY + .055);
+  surface('Separate white race start line', white, [[-.16, .16, -5.75, 5.75]], trackY + .055);
 
   function instancedBoxes(name, dims, material, stations, x, y) {
     const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(...dims), material, stations.length);

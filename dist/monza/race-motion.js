@@ -62,6 +62,8 @@ function lateralOffset(u) {
   return RACING_LINE[0][1];
 }
 
+export const racingLineOffset = lateralOffset;
+
 function sectionAt(u) {
   const distance = wrap01(u) * CIRCUIT_METERS;
   for (let i = SECTIONS.length - 1; i >= 0; i--) {
@@ -113,9 +115,9 @@ export function createRaceController(THREE, curve, car, options = {}) {
   const directionBefore = new THREE.Vector3();
   const directionAfter = new THREE.Vector3();
   const directionStep = 2.2 / length;
-  function directionOnLine(u, target) {
-    pointOnLine(u - directionStep, directionBefore);
-    pointOnLine(u + directionStep, directionAfter);
+  function directionOnLine(u, target, offset = null) {
+    pointOnLine(u - directionStep, directionBefore, offset ?? lateralOffset(u - directionStep));
+    pointOnLine(u + directionStep, directionAfter, offset ?? lateralOffset(u + directionStep));
     return target.subVectors(directionAfter, directionBefore).setY(0).normalize();
   }
 
@@ -207,12 +209,14 @@ export function createRaceController(THREE, curve, car, options = {}) {
     return profile[index] * (1 - blend) + profile[(index + 1) % count] * blend;
   }
 
-  function placeCar() {
+  function placeCar(replayOffset = null) {
     const raceOffset = lateralOffset(stats.progress);
     const gridBlend = 1 - smoothstep(clamp(stats.distanceMeters / 120, 0, 1));
-    const offset = raceOffset + (laneOffset - raceOffset) * gridBlend;
+    const offset = replayOffset === null
+      ? raceOffset + (laneOffset - raceOffset) * gridBlend
+      : clamp(replayOffset, -3, 19);
     pointOnLine(stats.progress, car.position, offset);
-    directionOnLine(stats.progress, tangent);
+    directionOnLine(stats.progress, tangent, replayOffset === null ? null : offset);
     const yaw = Math.atan2(tangent.z, -tangent.x);
     const { frontX, rearX, frontZ, rearZ, centerY, radius } = WHEEL_GEOMETRY;
     const cosYaw = Math.cos(yaw), sinYaw = Math.sin(yaw);
@@ -300,6 +304,7 @@ export function createRaceController(THREE, curve, car, options = {}) {
 
   reset(startU);
   return {
+    car,
     stats,
     start() { stats.running = true; return stats; },
     stop() { stats.running = false; return stats; },
@@ -312,6 +317,16 @@ export function createRaceController(THREE, curve, car, options = {}) {
       stats.u = stats.progress;
       stats.distanceMeters = Math.max(0, finite(distanceMeters, 0));
       placeCar();
+      return stats;
+    },
+    // Historical telemetry supplies each car's own longitudinal distance and
+    // speed. Its lateral line is reconstructed separately for this 3D track.
+    placeReplay(u, distanceMeters, speedKmh, lateralMetres) {
+      stats.progress = wrap01(finite(u, startU));
+      stats.u = stats.progress;
+      stats.distanceMeters = finite(distanceMeters, 0);
+      stats.speedKmh = Math.max(0, finite(speedKmh, 0));
+      placeCar(finite(lateralMetres, laneOffset));
       return stats;
     },
     setWet(wet) { wetGrip = wet ? .82 : 1; return stats; },
