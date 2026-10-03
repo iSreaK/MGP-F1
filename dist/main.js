@@ -22,8 +22,6 @@ const garage = document.querySelector('.garage');
 const garageSearch = document.querySelector('#garage-search');
 const garageResults = document.querySelector('#garage-results');
 const garageEmpty = document.querySelector('#garage-empty');
-const previousButton = document.querySelector('#previous-car');
-const nextButton = document.querySelector('#next-car');
 const switcher = document.querySelector('.car-switcher');
 const teams = new Map();
 for (const car of carCatalog) {
@@ -46,7 +44,7 @@ const teamGroups = [...switcher.querySelectorAll('[data-team-group]')];
 const narrowScreen = window.matchMedia('(max-width: 760px)');
 if (narrowScreen.matches) garage.open = false;
 function updateGarageToggleLabel() {
-  document.querySelector('#garage-toggle-label').textContent = garage.open ? 'Fermer' : 'Choisir';
+  document.querySelector('#garage-toggle-label').textContent = garage.open ? 'Masquer' : 'Voitures';
 }
 updateGarageToggleLabel();
 
@@ -102,17 +100,12 @@ function closeMobileGarage() {
 
 function updateCarUI(key) {
   const car = cars[key];
-  const position = carCatalog.indexOf(car);
   viewer.dataset.car = car.teamKey;
   document.querySelector('#team-name').textContent = car.team;
   document.querySelector('#model-name').textContent = car.name;
   document.querySelector('#car-number').textContent = car.displayNumber;
   document.querySelector('#driver-label').innerHTML = `<span>PILOTE / ${car.number}</span> ${car.driver}`;
   document.querySelector('#garage-current').textContent = `${car.driverName} · ${car.name}`;
-  document.querySelector('#pager-driver').textContent = car.driverName;
-  document.querySelector('#car-position').textContent = `${String(position + 1).padStart(2, '0')} / ${String(carCatalog.length).padStart(2, '0')}`;
-  previousButton.setAttribute('aria-label', `Voiture précédente : ${carCatalog[(position - 1 + carCatalog.length) % carCatalog.length].driverName}`);
-  nextButton.setAttribute('aria-label', `Voiture suivante : ${carCatalog[(position + 1) % carCatalog.length].driverName}`);
   canvas.setAttribute('aria-label', `Modèle 3D de la ${car.name} de ${car.driverName}`);
   document.title = `${car.driverName} · ${car.name} 2026 · Garage 3D`;
   downloadLink.href = new URL(car.url, import.meta.url).href;
@@ -384,18 +377,6 @@ function startViewer() {
       closeMobileGarage();
     });
   });
-  function stepCar(direction) {
-    const currentIndex = Math.max(0, carCatalog.findIndex(car => car.key === activeKey));
-    const nextIndex = (currentIndex + direction + carCatalog.length) % carCatalog.length;
-    if (garageSearch.value) {
-      garageSearch.value = '';
-      filterGarage();
-    }
-    loadCar(carCatalog[nextIndex].key);
-    closeMobileGarage();
-  }
-  previousButton.addEventListener('click', () => stepCar(-1));
-  nextButton.addEventListener('click', () => stepCar(1));
   returnButton.addEventListener('click', () => status.classList.add('is-hidden'));
   const initialKey = new URLSearchParams(location.search).get('car');
   loadCar(cars[initialKey] ? initialKey : 'redbull');

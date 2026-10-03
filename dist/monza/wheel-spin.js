@@ -1,6 +1,6 @@
-// The RB22 GLB groups all four wheels by material. Split only their triangles
-// into four local pivots; the source meshes remain available for disposal.
-const ROTATING_PARTS = new Set([
+// All 2026 GLBs group four wheels by material. The brake caliper stays fixed;
+// tyres, sidewall graphics, discs and spokes rotate with the wheel.
+export const WHEEL_PART_NAMES = Object.freeze([
   'Pirelli slick rubber',
   'Tyre sidewall graphics',
   'Wheel V4 deep inner barrel',
@@ -10,10 +10,17 @@ const ROTATING_PARTS = new Set([
   'Wheel V4 machined graphite lip',
   'Wheel V4 satin black forged spokes',
 ]);
+const ROTATING_PARTS = new Set(WHEEL_PART_NAMES);
 
-// Dimensions measured from the tyre mesh in the RB22 GLB. Its lowest rubber
-// vertex is at model Y=0, so the chassis origin rests at road height on level
-// asphalt. Race placement uses the same axle dimensions as the wheel pivots.
+// GLTFLoader sanitizes object.name for animation tracks (spaces become _),
+// while userData.name keeps the original node name from the GLB.
+export function isRotatingWheelPart(object) {
+  if (!object?.isMesh) return false;
+  return ROTATING_PARTS.has(object.userData?.name || object.name?.replaceAll('_', ' '));
+}
+
+// The 22 models share these axle dimensions. Race placement uses the same
+// measurements as the pivots so tyres continue to meet the uneven asphalt.
 export const WHEEL_GEOMETRY = Object.freeze({
   frontX: -1.55,
   rearX: 1.70,
@@ -32,8 +39,59 @@ const WHEELS = [
 
 const TYRE_RADIUS = WHEEL_GEOMETRY.radius;
 const FULL_TURN = Math.PI * 2;
+const disabledBinding = () => ({
+  enabled: false, triangleCount: 0, pivots: [],
+  update() {}, setDistance() {}, dispose() {},
+});
+
+// Each source mesh contains all four wheels. Keep only the vertices referenced
+// by a wheel's triangles, instead of cloning the full mesh four times per car.
+function wheelGeometry(THREE, source, selected, wheel) {
+  const remap = new Map();
+  const originalIndices = [];
+  const indices = selected.map(index => {
+    let mapped = remap.get(index);
+    if (mapped === undefined) {
+      mapped = originalIndices.length;
+      remap.set(index, mapped);
+      originalIndices.push(index);
+    }
+    return mapped;
+  });
+  const geometry = new THREE.BufferGeometry();
+  for (const [name, attribute] of Object.entries(source.attributes)) {
+    const sourceArray = attribute.isInterleavedBufferAttribute ? attribute.data.array : attribute.array;
+    const copied = new THREE.BufferAttribute(
+      new sourceArray.constructor(originalIndices.length * attribute.itemSize),
+      attribute.itemSize, attribute.normalized,
+    );
+    for (let i = 0; i < originalIndices.length; i++) {
+      for (let component = 0; component < attribute.itemSize; component++) {
+        copied.setComponent(i, component, attribute.getComponent(originalIndices[i], component));
+      }
+    }
+    geometry.setAttribute(name, copied);
+  }
+  geometry.setIndex(indices);
+  geometry.translate(-wheel.x, -wheel.y, -wheel.z);
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
 
 export function bindWheelSpin(THREE, car) {
+  const parts = [];
+  car.traverse(object => {
+    if (isRotatingWheelPart(object)) parts.push(object);
+  });
+  // A different or damaged asset keeps static wheels and never loses its
+  // source tyre meshes; the rest of the race remains usable.
+  if (parts.length !== WHEEL_PART_NAMES.length ||
+    new Set(parts.map(object => object.userData?.name || object.name?.replaceAll('_', ' '))).size !== WHEEL_PART_NAMES.length ||
+    parts.some(object => !object.geometry.getIndex() || !object.geometry.getAttribute('position') ||
+      Array.isArray(object.material) || Object.keys(object.geometry.morphAttributes || {}).length)) {
+    return disabledBinding();
+  }
   car.updateMatrixWorld(true);
   const worldToCar = car.matrixWorld.clone().invert();
   const pivots = WHEELS.map(({ key, x, y, z }) => {
@@ -48,11 +106,8 @@ export function bindWheelSpin(THREE, car) {
   const newGeometries = [];
   let triangleCount = 0;
 
-  car.traverse(object => {
-    if (!object.isMesh || !ROTATING_PARTS.has(object.name)) return;
+  for (const object of parts) {
     const source = object.geometry;
-    const sourceIndex = source.getIndex();
-    if (!sourceIndex || !source.getAttribute('position')) return;
 
     // GLB nodes are at identity today; baking the relative transform also
     // keeps the split correct if the asset gains nested groups later.
@@ -71,22 +126,7 @@ export function bindWheelSpin(THREE, car) {
 
     fourSets.forEach((selected, wheelIndex) => {
       if (!selected.length) return;
-      const { x, y, z } = WHEELS[wheelIndex];
-      const geometry = prepared.clone();
-      geometry.setIndex(selected);
-      geometry.translate(-x, -y, -z);
-
-      // Only referenced vertices affect culling. A normal computeBoundingBox()
-      // would include unused vertices copied from the other three wheels.
-      const local = geometry.getAttribute('position');
-      const box = new THREE.Box3().makeEmpty();
-      const point = new THREE.Vector3();
-      for (const index of selected) {
-        point.fromBufferAttribute(local, index);
-        box.expandByPoint(point);
-      }
-      geometry.boundingBox = box;
-      geometry.boundingSphere = box.getBoundingSphere(new THREE.Sphere());
+      const geometry = wheelGeometry(THREE, prepared, selected, WHEELS[wheelIndex]);
 
       const part = new THREE.Mesh(geometry, object.material);
       part.name = `${object.name} ${WHEELS[wheelIndex].key}`;
@@ -100,7 +140,7 @@ export function bindWheelSpin(THREE, car) {
     prepared.dispose();
     object.visible = false;
     sources.push(object);
-  });
+  }
 
   return {
     enabled: sources.length === ROTATING_PARTS.size,

@@ -7,6 +7,7 @@ import { createTrackGapLookup } from './track-gap.js';
 import { createRaceController } from './race-motion.js';
 import { createHistoricalReplay, replayLapDistance } from './historical-replay.js';
 import { computeReplayPlacements, replayVisualDistance, replayPitOffset, rateLimitReplayOffset } from './replay-lanes.js';
+import { resolveEntitySpacing } from './entity-spacing.js';
 import { bindWheelSpin } from './wheel-spin.js';
 import { carCatalog, carByKey } from '../car-catalog.js';
 import { createMonzaSky } from './sky.js';
@@ -181,6 +182,8 @@ if (renderer) {
   let replayRequestId = 0;
   let failedCarName = null;
   const replayLateralOffsets = new Map();
+  const replayEntityPositions = new Map();
+  const freeEntityPositions = new Map();
 
   function setReplayPanelCompact(compact) {
     if (!replayPanel || !replayPanelToggle) return;
@@ -313,7 +316,6 @@ if (renderer) {
     const placements = computeReplayPlacements(visualCars, world.gridU, trackGap, historicalReplay.trackLengthMeters);
     const raceDelta = lastReplayPoseTime === null ? 0 : Math.max(0, frame.timeSec - lastReplayPoseTime);
     for (const car of frame.cars) {
-      const model = replayCars()[car.number];
       const placement = placements.get(car.number);
       placement.offset = replayPitOffset(visualCars.find(visual => visual.number === car.number),
         frame.timeSec, historicalReplay.data.session, historicalReplay.data.drivers[car.number]?.pit, placement.offset);
@@ -323,7 +325,24 @@ if (renderer) {
           placement.offset > 3 || previous > 3 ? 1.2 : .65);
       }
       replayLateralOffsets.set(car.number, placement.offset);
-      model?.controller?.placeReplay(placement.u, car.progressMeters, car.speedKph, placement.offset);
+    }
+    if (snapPlacement) replayEntityPositions.clear();
+    const visibleCars = visualCars.filter(car =>
+      !(car.ended && frame.timeSec > historicalReplay.data.drivers[car.number].finishSec + 1));
+    const entityPoses = resolveEntitySpacing(visibleCars.map(car => ({
+      number: car.number, gridPosition: car.gridPosition,
+      priority: car.progressMeters, ...placements.get(car.number),
+    })), trackGap, replayEntityPositions, {
+      lateralStep: snapPlacement ? Infinity : Math.min(2, raceDelta * 2.5),
+      releaseStep: snapPlacement ? Infinity : Math.min(1.5, raceDelta * 5),
+    });
+    for (const car of frame.cars) {
+      const model = replayCars()[car.number];
+      const placement = placements.get(car.number);
+      const entity = entityPoses.get(car.number);
+      model?.controller?.placeReplay(placement.u, car.progressMeters, car.speedKph,
+        entity?.offset ?? placement.offset, entity?.u ?? placement.u);
+      if (entity) replayEntityPositions.set(car.number, entity);
       model?.wheels?.setDistance(car.progressMeters);
       if (model?.controller?.car) model.controller.car.visible = !(car.ended && frame.timeSec > historicalReplay.data.drivers[car.number].finishSec + 1);
     }
@@ -362,6 +381,7 @@ if (renderer) {
     lastReplayRankingKey = '';
     lastReplayPoseTime = null;
     replayLateralOffsets.clear();
+    replayEntityPositions.clear();
     for (const car of Object.values(replayCars())) {
       car.controller?.reset();
       car.wheels?.setDistance(0);
@@ -424,6 +444,7 @@ if (renderer) {
       lastReplayRankingKey = '';
       lastReplayPoseTime = null;
       replayLateralOffsets.clear();
+      replayEntityPositions.clear();
       selectedReplayNumber = requestedReplayNumber;
       historicalReplay.setSpeed(Number(replaySpeed?.value) || 20);
       historicalReplay.seek(0);
@@ -494,6 +515,7 @@ if (renderer) {
     racing = false;
     raceStarted = false;
     raceElapsedSec = 0;
+    freeEntityPositions.clear();
     lastRaceDistance = 0;
     controls.enabled = true;
     raceHud.hidden = true;
@@ -523,6 +545,7 @@ if (renderer) {
       }
       lastRaceDistance = 0;
       raceElapsedSec = 0;
+      freeEntityPositions.clear();
       raceStarted = true;
     }
     raceController.start();
@@ -869,6 +892,23 @@ if (renderer) {
         instance.controller.placeAt(trackGap.behind(stats.progress, gap), stats.distanceMeters);
         instance.wheels?.update(stats.distanceMeters - instance.lastRaceDistance);
         instance.lastRaceDistance = stats.distanceMeters;
+      }
+      const traffic = [...carInstances.values()].map(instance => ({
+        number: instance.entry.number,
+        gridPosition: instance.entry.gridPosition,
+        priority: -instance.entry.gridPosition,
+        u: instance.controller.stats.progress,
+        offset: instance.controller.stats.lateralOffset,
+      }));
+      const entityPoses = resolveEntitySpacing(traffic, trackGap, freeEntityPositions, {
+        lateralStep: Math.min(.18, dt * 4),
+        releaseStep: Math.min(.35, dt * 7),
+      });
+      for (const instance of carInstances.values()) {
+        const entity = entityPoses.get(instance.entry.number);
+        if (!entity) continue;
+        instance.controller.placeVisual(entity.u, entity.offset);
+        freeEntityPositions.set(instance.entry.number, entity);
       }
       const cameraStats = focusCarKey
         ? carInstances.get(carByKey[focusCarKey].number)?.controller?.stats || stats : stats;

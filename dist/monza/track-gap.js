@@ -34,6 +34,7 @@ export function createTrackGapLookup(curve, divisions = 8192) {
 
   return {
     lengthMeters,
+    metresAt: distanceAt,
     behind(u, metres) { return uAt(distanceAt(u) - metres); },
   };
 }

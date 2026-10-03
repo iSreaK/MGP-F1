@@ -200,6 +200,7 @@ export function createRaceController(THREE, curve, car, options = {}) {
     distanceMeters: 0,
     trackLengthMeters: length,
     sectionName: sectionAt(startU),
+    lateralOffset: laneOffset,
     position: car.position,
     tangent,
   };
@@ -210,16 +211,16 @@ export function createRaceController(THREE, curve, car, options = {}) {
     return profile[index] * (1 - blend) + profile[(index + 1) % count] * blend;
   }
 
-  function placeCar(replayOffset = null) {
-    const raceOffset = lateralOffset(stats.progress);
+  function placeCar(replayOffset = null, visualU = stats.progress) {
+    const raceOffset = lateralOffset(visualU);
     const gridBlend = pitLaneStart
       ? 1 - smoothstep(clamp((stats.distanceMeters - 130) / 180, 0, 1))
       : 1 - smoothstep(clamp(stats.distanceMeters / 120, 0, 1));
     const offset = replayOffset === null
       ? raceOffset + (laneOffset - raceOffset) * gridBlend
-      : clamp(replayOffset, -3, 19);
-    pointOnLine(stats.progress, car.position, offset);
-    directionOnLine(stats.progress, tangent, replayOffset === null ? null : offset);
+      : clamp(replayOffset, -4.7, 19);
+    pointOnLine(visualU, car.position, offset);
+    directionOnLine(visualU, tangent, replayOffset === null ? null : offset);
     const yaw = Math.atan2(tangent.z, -tangent.x);
     const { frontX, rearX, frontZ, rearZ, centerY, radius } = WHEEL_GEOMETRY;
     const cosYaw = Math.cos(yaw), sinYaw = Math.sin(yaw);
@@ -228,7 +229,7 @@ export function createRaceController(THREE, curve, car, options = {}) {
       const localX = wheelX * Math.cos(pitch) - centerY * Math.sin(pitch);
       const x = car.position.x + localX * cosYaw + wheelZ * sinYaw;
       const z = car.position.z - localX * sinYaw + wheelZ * cosYaw;
-      return trackHeightAt(stats.progress, x, z);
+      return trackHeightAt(visualU, x, z);
     };
     const axleHeights = pitch => ({
       front: (heightUnderWheel(frontX, -frontZ, pitch) + heightUnderWheel(frontX, frontZ, pitch)) * .5,
@@ -248,6 +249,7 @@ export function createRaceController(THREE, curve, car, options = {}) {
     const rearOrigin = rearHeight - rearX * Math.sin(pitch) - wheelBottomAtOrigin;
     car.position.y = (frontOrigin + rearOrigin) * .5;
     car.rotation.set(0, yaw, pitch);
+    stats.lateralOffset = offset;
     stats.sectionName = sectionAt(stats.progress);
   }
 
@@ -324,12 +326,18 @@ export function createRaceController(THREE, curve, car, options = {}) {
     },
     // Historical telemetry supplies each car's own longitudinal distance and
     // speed. Its lateral line is reconstructed separately for this 3D track.
-    placeReplay(u, distanceMeters, speedKmh, lateralMetres) {
+    placeReplay(u, distanceMeters, speedKmh, lateralMetres, visualU = u) {
       stats.progress = wrap01(finite(u, startU));
       stats.u = stats.progress;
       stats.distanceMeters = finite(distanceMeters, 0);
       stats.speedKmh = Math.max(0, finite(speedKmh, 0));
-      placeCar(finite(lateralMetres, laneOffset));
+      placeCar(finite(lateralMetres, laneOffset), wrap01(finite(visualU, u)));
+      return stats;
+    },
+    // Resolve close traffic on screen without changing the independent
+    // simulation/replay progress used by timing, speed and wheel animation.
+    placeVisual(u, lateralMetres) {
+      placeCar(finite(lateralMetres, stats.lateralOffset), wrap01(finite(u, stats.progress)));
       return stats;
     },
     setWet(wet) { wetGrip = wet ? .82 : 1; return stats; },
