@@ -137,6 +137,27 @@ export function createSingaporeWorld(THREE, scene) {
   const distances = [0];
   for (let i = 1; i < SAMPLE_COUNT; i++) distances.push(distances[i - 1] + samples[i - 1].distanceTo(samples[i]));
   const half = Math.max(4.5, Math.min(6.0, Number(TRACK_WIDTH_METERS || 10.5) / 2));
+  // The FIA diagram defines the centreline, not a surveyed kerb-to-kerb
+  // width. Keep the start/finish complex at its existing scene width and use
+  // only gradual, sub-metre visual changes elsewhere. At the widest point
+  // the fixed concrete-wall inner face still has over a metre of clearance.
+  const widthFeatures = [
+    [LANDMARKS.turns.T7.distanceMeters - 70, .30, 110],
+    [LANDMARKS.turns.T13.distanceMeters, -.25, 125],
+    [LANDMARKS.turns.T16.distanceMeters + 55, .22, 145],
+  ];
+  const roadHalfWidths = Float32Array.from({ length: SAMPLE_COUNT }, (_, index) => {
+    const metres = index / SAMPLE_COUNT * TRACK_LENGTH_METERS;
+    let width = half;
+    for (const [centre, change, spread] of widthFeatures) {
+      let delta = metres - centre;
+      if (delta > TRACK_LENGTH_METERS / 2) delta -= TRACK_LENGTH_METERS;
+      if (delta < -TRACK_LENGTH_METERS / 2) delta += TRACK_LENGTH_METERS;
+      width += change * Math.exp(-.5 * (delta / spread) ** 2);
+    }
+    return Math.max(half - .25, Math.min(half + .35, width));
+  });
+  const roadHalfWidthAt = u => roadHalfWidths[Math.round(u * SAMPLE_COUNT) % SAMPLE_COUNT];
 
   const street = new THREE.MeshBasicMaterial({ color: 0x252b32, side: THREE.DoubleSide });
   const urbanGround = new THREE.Mesh(new THREE.PlaneGeometry(6500, 6500), street);
@@ -152,19 +173,21 @@ export function createSingaporeWorld(THREE, scene) {
   const white = new THREE.MeshBasicMaterial({ color: 0xd9e0df, side: THREE.DoubleSide });
   const curb = new THREE.MeshStandardMaterial({ map: curbTexture(THREE), color: 0xffffff,
     roughness: .87, side: THREE.DoubleSide });
-  const overviewAccent = new THREE.MeshBasicMaterial({ color: 0x101922, transparent: true,
+  const overviewAccent = new THREE.MeshBasicMaterial({ color: 0x476675, transparent: true,
     opacity: 0, depthWrite: false, side: THREE.DoubleSide });
 
   createRibbon(THREE, scene, 'Street pavement beside Singapore circuit', frames, distances,
     -half - 9.6, half + 9.6, shoulder, { height: -.17, repeatMetres: 18 });
   createRibbon(THREE, scene, 'Overview circuit silhouette', frames, distances,
-    -half - 5.5, half + 5.5, overviewAccent, { height: -.055 });
+    -half - 5.5, half + 5.5, overviewAccent, { height: .009 });
   const road = createRibbon(THREE, scene, 'Marina Bay Street Circuit racing surface', frames, distances,
-    -half, half, asphalt, { repeatMetres: 10 });
+    u => -roadHalfWidthAt(u), roadHalfWidthAt, asphalt, { repeatMetres: 10 });
   createRibbon(THREE, scene, 'Left street-circuit edge line', frames, distances,
-    -half + .08, -half + .21, white, { height: .018 });
+    u => -roadHalfWidthAt(u) + .08, u => -roadHalfWidthAt(u) + .21,
+    white, { height: .018 });
   createRibbon(THREE, scene, 'Right street-circuit edge line', frames, distances,
-    half - .21, half - .08, white, { height: .018 });
+    u => roadHalfWidthAt(u) - .21, u => roadHalfWidthAt(u) - .08,
+    white, { height: .018 });
 
   // Corner curbs are short low strips, so the rest of the lap reads as a true
   // wall-lined street and not a permanent red-and-white race track border.
@@ -179,7 +202,8 @@ export function createSingaporeWorld(THREE, scene) {
     const side = clockwise ? 1 : -1;
     const include = t => Math.abs(wrappedDelta(t, u)) * TRACK_LENGTH_METERS < 27;
     createRibbon(THREE, scene, `Turn ${corner} low inner curb`, frames, distances,
-      side * (half + .025), side * (half + .66), curb,
+      t => side * (roadHalfWidthAt(t) + .025),
+      t => side * (roadHalfWidthAt(t) + .66), curb,
       { include, height: .026, repeatMetres: 3.2 });
   }
 

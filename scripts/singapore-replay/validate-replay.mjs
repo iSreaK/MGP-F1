@@ -27,7 +27,16 @@ assert.equal(replay.session.sampleHz, 2);
 assert.equal(Object.keys(replay.drivers).length, 20);
 assert.equal(replay.officialField.length, 20);
 assert.deepEqual(replay.sampleFields, ['tSec', 'progressMeters', 'speedKph',
-  'throttlePct', 'brakePct', 'gear', 'officialPosition']);
+  'throttlePct', 'brakePct', 'gear', 'officialPosition',
+  'lateralMeters', 'lateralConfidence']);
+assert.ok(replay.session.gpsLateral.registrationRmsMetres < 10);
+assert.ok(replay.session.gpsLateral.phaseMetres >= 25
+  && replay.session.gpsLateral.phaseMetres <= 35);
+assert.equal(replay.session.gpsLateral.coveredTenMetreBins, 493);
+assert.ok(replay.session.gpsLateral.confidentFrames
+  > replay.session.gpsLateral.totalFrames * .85);
+assert.ok(replay.session.gpsLateral.weightedLateralStepP99MetresPerHalfSecond < 1.1);
+assert.ok(replay.session.gpsLateral.weightedLateralStepMaxMetresPerHalfSecond <= 1.27);
 assert.deepEqual([...new Set(SINGAPORE_2025_ROSTER.map(row => row.finalPosition))]
   .sort((a, b) => a - b), Array.from({ length: 20 }, (_, index) => index + 1));
 assert.deepEqual(SINGAPORE_2025_ROSTER.filter(row => row.pitLaneStart)
@@ -95,8 +104,10 @@ for (const expected of SINGAPORE_2025_ROSTER) {
 
   for (let index = 0; index < driver.samples.length; index++) {
     const frame = driver.samples[index];
-    assert.equal(frame.length, 7);
+    assert.equal(frame.length, 9);
     assert.ok(frame.every(Number.isFinite), `Valeur non finie frame ${index} #${number}`);
+    assert.ok(Math.abs(frame[7]) <= 3.2 && frame[8] >= 0 && frame[8] <= 1,
+      `Écart GPS hors chaussée frame ${index} #${number}`);
     assert.ok(frame[2] >= 0 && frame[2] <= 380,
       `Vitesse impossible frame ${index} #${number}`);
     assert.ok(frame[3] >= 0 && frame[3] <= 100 && frame[4] >= 0 && frame[4] <= 100,

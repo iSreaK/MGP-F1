@@ -5,6 +5,7 @@ import { createSingaporeWorld } from './world.js';
 import { GRID_LANE_CENTER, GRID_SLOT_SPACING, PIT_START_LANE_CENTER } from './grid-details.js';
 import { createTrackGapLookup } from '../monza/track-gap.js';
 import { createRaceController } from './race-motion.js';
+import { createFreeRaceField } from './free-race-field.js';
 import { createHistoricalReplay, replayLapDistance } from '../monza/historical-replay.js';
 import { createReplayFlagTimeline } from '../monza/replay-flags.js';
 import { computeReplayPlacements, replayVisualDistance, replayPitOffset, rateLimitReplayOffset } from './replay-lanes.js';
@@ -135,9 +136,11 @@ if (renderer) {
   controls.zoomSpeed = 0.8;
   controls.rotateSpeed = 0.7;
 
-  const ambient = new THREE.HemisphereLight(0x9ec8ea, 0x142631, 1.32);
+  const ambient = new THREE.HemisphereLight(0x9ec8ea, 0x142631, 1.14);
   scene.add(ambient);
-  const sun = new THREE.DirectionalLight(0xcbe9ff, 1.18);
+  // A subdued skyline fill leaves the road readable while the track's real
+  // illumination rhythm comes from the floodlight pools and nearby masts.
+  const sun = new THREE.DirectionalLight(0xcbe9ff, .78);
   const sunOffset = new THREE.Vector3(-680, 820, 1020);
   sun.position.copy(sunOffset);
   sun.castShadow = true;
@@ -179,11 +182,9 @@ if (renderer) {
   let flying = false;
   let racing = false;
   let raceStarted = false;
-  let raceElapsedSec = 0;
   let raceController = null;
+  let freeRaceField = null;
   let redBullCar = null;
-  let wheelAnimator = null;
-  let lastRaceDistance = 0;
   const carInstances = new Map();
   let lapProgress = 0;
   let cameraMode = 0;
@@ -418,6 +419,7 @@ if (renderer) {
       number: car.number, gridPosition: car.gridPosition,
       priority: car.progressMeters, ...placements.get(car.number),
     })), trackGap, replayEntityPositions, {
+      curve: world.curve,
       lateralStep: snapPlacement ? Infinity : Math.min(2, raceDelta * 2.5),
       releaseStep: snapPlacement ? Infinity : Math.min(1.5, raceDelta * 5),
     });
@@ -579,7 +581,9 @@ if (renderer) {
 
   function updateRaceHud(stats = raceController?.stats) {
     if (!stats) return;
-    const lapDistance = stats.distanceMeters % stats.trackLengthMeters;
+    // The curve starts at the FIA timing line, whereas each car's travelled
+    // distance starts at its own grid box.
+    const lapDistance = ((stats.progress % 1) + 1) % 1 * stats.trackLengthMeters;
     raceSpeed.textContent = Math.round(stats.speedKmh).toString();
     raceLap.textContent = `TOUR ${stats.lap + 1}`;
     raceDistance.textContent = `${(lapDistance / 1000).toFixed(2).replace('.', ',')} / 4,93 KM`;
@@ -589,9 +593,46 @@ if (renderer) {
     if (raceSection) raceSection.textContent = stats.sectionName || 'Ligne droite des stands';
   }
 
+  function placeFreeCar(instance, simulated, entity) {
+    const stats = instance.controller.placeReplay(simulated.u,
+      simulated.distanceMeters, simulated.speedKmh,
+      entity?.offset ?? simulated.offset, entity?.u ?? simulated.u);
+    stats.lap = simulated.lap;
+    stats.laps = simulated.lap;
+    stats.lapTime = simulated.lapTime;
+    stats.lastLapTime = simulated.lastLapTime;
+    stats.targetSpeedKmh = simulated.speedKmh;
+    instance.wheels?.setDistance(simulated.distanceMeters);
+  }
+
+  function placeFreeRaceFrame(frame, cameraDt) {
+    const visibleCars = frame.cars.filter(car => carInstances.has(car.number));
+    const entityPoses = resolveEntitySpacing(visibleCars.map(car => ({
+      number: car.number, gridPosition: car.gridPosition,
+      priority: car.progressMeters, u: car.u, offset: car.offset,
+    })), trackGap, freeEntityPositions, {
+      curve: world.curve,
+      lateralStep: Math.min(.18, cameraDt * 4),
+      releaseStep: Math.min(.35, cameraDt * 7),
+    });
+    for (const simulated of visibleCars) {
+      const instance = carInstances.get(simulated.number);
+      const entity = entityPoses.get(simulated.number);
+      placeFreeCar(instance, simulated, entity);
+      if (entity) freeEntityPositions.set(simulated.number, entity);
+    }
+    const cameraStats = focusCarKey
+      ? carInstances.get(carByKey[focusCarKey].number)?.controller?.stats || raceController?.stats
+      : raceController?.stats;
+    if (!cameraStats) return;
+    followRaceCamera(cameraStats, cameraStats.speedKmh, cameraDt);
+    updateRaceHud(cameraStats);
+  }
+
   function pauseRace() {
     if (!racing || !raceController) return;
     racing = false;
+    freeRaceField?.pause();
     raceController.stop();
     controls.enabled = true;
     raceButton.textContent = '▶  Reprendre la simulation';
@@ -605,13 +646,12 @@ if (renderer) {
     if (!raceController || !raceStarted) return;
     for (const instance of carInstances.values()) {
       instance.controller.reset();
-      instance.lastRaceDistance = 0;
+      instance.wheels?.setDistance(0);
     }
     racing = false;
     raceStarted = false;
-    raceElapsedSec = 0;
+    freeRaceField?.reset();
     freeEntityPositions.clear();
-    lastRaceDistance = 0;
     controls.enabled = true;
     raceHud.hidden = true;
     endSessionUI();
@@ -632,18 +672,19 @@ if (renderer) {
   }
 
   function startRace() {
-    if (!raceController || !world) return;
+    if (!raceController || !world || !freeRaceField) return;
     stopFlyover();
     if (!raceStarted) {
       for (const instance of carInstances.values()) {
         instance.controller.reset();
-        instance.lastRaceDistance = 0;
+        instance.wheels?.setDistance(0);
       }
-      lastRaceDistance = 0;
-      raceElapsedSec = 0;
+      freeRaceField.reset();
+      freeRaceField.setWet(wetMode);
       freeEntityPositions.clear();
       raceStarted = true;
     }
+    freeRaceField.start();
     raceController.start();
     racing = true;
     cameraMove = null;
@@ -683,6 +724,10 @@ if (renderer) {
   try {
     world = createSingaporeWorld(THREE, scene);
     trackGap = createTrackGapLookup(world.curve);
+    freeRaceField = createFreeRaceField(carCatalog, {
+      gridU: world.gridU, trackLengthMeters: trackGap.lengthMeters,
+      gridSlotSpacingMeters: GRID_SLOT_SPACING,
+    });
     weather = createSingaporeWeather(THREE, scene, world.curve, world.trackMaterial);
     if (weatherButton) weatherButton.disabled = false;
     const center = world.bounds.getCenter(new THREE.Vector3());
@@ -743,21 +788,16 @@ if (renderer) {
         const wheelBinding = bindWheelSpin(THREE, car);
         const wheels = wheelBinding.enabled ? wheelBinding : null;
         if (!wheels) wheelBinding.dispose();
-        carInstances.set(entry.number, { entry, controller, wheels, lastRaceDistance: 0 });
+        const instance = { entry, controller, wheels };
+        carInstances.set(entry.number, instance);
         if (entry.key === 'redbull') {
           redBullCar = car;
           raceController = controller;
-          wheelAnimator = wheels;
           focusSun(car.position);
         }
-        if (raceStarted && raceController && entry.key !== 'redbull') {
-          if (!entry.pitLaneStart) {
-            const leader = raceController.stats;
-            controller.placeAt(trackGap.behind(leader.progress,
-              (entry.gridPosition - carByKey.redbull.gridPosition) * GRID_SLOT_SPACING),
-            leader.distanceMeters);
-            carInstances.get(entry.number).lastRaceDistance = leader.distanceMeters;
-          }
+        if (raceStarted && freeRaceField) {
+          const simulated = freeRaceField.frame().byNumber[entry.number];
+          if (simulated) placeFreeCar(instance, simulated);
         }
         if (entry.key === focusCarKey || (!focusCarKey && entry.key === 'redbull')) {
           showCarIntro(car, startU, entry.pitLaneStart ? -7 : laneOffset > 0 ? 7 : -8);
@@ -922,12 +962,14 @@ if (renderer) {
     if (!weather) return;
     wetMode = !wetMode;
     weather.setWet(wetMode);
+    freeRaceField?.setWet(wetMode);
     for (const instance of carInstances.values()) instance.controller.setWet(wetMode);
     weatherButton.textContent = wetMode ? 'Météo · Pluie' : 'Météo · Sec';
     weatherButton.setAttribute('aria-pressed', String(wetMode));
     weatherButton.setAttribute('aria-label', wetMode ? 'Désactiver la pluie et sécher la piste' : 'Activer la pluie et la piste mouillée');
-    sun.intensity = wetMode ? .85 : 1.18;
-    ambient.intensity = wetMode ? 1.15 : 1.32;
+    sun.intensity = wetMode ? .64 : .78;
+    ambient.intensity = wetMode ? 1.05 : 1.14;
+    world?.trackside.setWetLighting(wetMode);
     scene.fog.color.set(wetMode ? 0x122637 : 0x0c2230);
     sky.setWet(wetMode);
   });
@@ -943,7 +985,7 @@ if (renderer) {
   function followRaceCamera(cameraStats, speedKph, dt, snap = false) {
     const forward = cameraStats.tangent;
     const side = new THREE.Vector3(forward.z, 0, -forward.x);
-    const pitLaneView = cameraStats.lateralOffset > 7
+    const pitLaneView = cameraStats.lateralOffset < -7
       || (cameraStats.entry?.pitLaneStart && cameraStats.distanceMeters < 310);
     const desiredPosition = cameraStats.position.clone();
     const desiredTarget = cameraStats.position.clone();
@@ -992,54 +1034,10 @@ if (renderer) {
     if (replayActive && historicalReplay?.playing) {
       // Historical playback follows wall time even when a heavy frame takes >50 ms.
       placeReplayFrame(historicalReplay.tick(elapsed), false, false, motionDt);
-    } else if (racing && world && raceController) {
-      // Integrate the free simulation in stable steps, then render its final pose once.
-      let remaining = Math.min(elapsed, .5);
-      let stats = raceController.stats;
-      while (remaining > 0) {
-        const step = Math.min(.1, remaining);
-        stats = raceController.update(step);
-        raceElapsedSec += step;
-        for (const instance of carInstances.values()) {
-          if (!instance.entry.pitLaneStart || raceElapsedSec < instance.entry.pitStartDelaySec) continue;
-          instance.controller.start();
-          const pitStats = instance.controller.update(step);
-          instance.wheels?.update(pitStats.distanceMeters - instance.lastRaceDistance);
-          instance.lastRaceDistance = pitStats.distanceMeters;
-        }
-        remaining -= step;
-      }
-      if (wheelAnimator) wheelAnimator.update(stats.distanceMeters - lastRaceDistance);
-      lastRaceDistance = stats.distanceMeters;
-      for (const instance of carInstances.values()) {
-        if (instance.entry.number === carByKey.redbull.number) continue;
-        if (instance.entry.pitLaneStart) continue;
-        const gap = (instance.entry.gridPosition - carByKey.redbull.gridPosition) * GRID_SLOT_SPACING;
-        instance.controller.placeAt(trackGap.behind(stats.progress, gap), stats.distanceMeters);
-        instance.wheels?.update(stats.distanceMeters - instance.lastRaceDistance);
-        instance.lastRaceDistance = stats.distanceMeters;
-      }
-      const traffic = [...carInstances.values()].map(instance => ({
-        number: instance.entry.number,
-        gridPosition: instance.entry.gridPosition,
-        priority: -instance.entry.gridPosition,
-        u: instance.controller.stats.progress,
-        offset: instance.controller.stats.lateralOffset,
-      }));
-      const entityPoses = resolveEntitySpacing(traffic, trackGap, freeEntityPositions, {
-        lateralStep: Math.min(.18, motionDt * 4),
-        releaseStep: Math.min(.35, motionDt * 7),
-      });
-      for (const instance of carInstances.values()) {
-        const entity = entityPoses.get(instance.entry.number);
-        if (!entity) continue;
-        instance.controller.placeVisual(entity.u, entity.offset);
-        freeEntityPositions.set(instance.entry.number, entity);
-      }
-      const cameraStats = focusCarKey
-        ? carInstances.get(carByKey[focusCarKey].number)?.controller?.stats || stats : stats;
-      followRaceCamera(cameraStats, cameraStats.speedKmh, motionDt);
-      updateRaceHud(cameraStats);
+    } else if (racing && world && raceController && freeRaceField) {
+      // Each driver has an independent race state. Render only the final state
+      // of the stable simulation steps, then keep the model volumes separated.
+      placeFreeRaceFrame(freeRaceField.update(elapsed), motionDt);
     } else if (flying && world) {
       lapProgress = (lapProgress + motionDt / 80) % 1;
       const at = world.curve.getPointAt(lapProgress);
@@ -1064,6 +1062,7 @@ if (renderer) {
       const distance = camera.position.distanceTo(controls.target);
       world.overviewAccent.opacity = Math.max(0, Math.min(.82, (distance - 950) / 1900));
     }
+    world?.trackside.updateLighting(controls.target);
     sky.follow(camera.position);
     weather?.update(motionDt, camera);
     renderer.render(scene, camera);

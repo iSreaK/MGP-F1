@@ -40,9 +40,8 @@ export function rateLimitReplayOffset(previous, target, raceDeltaSec, frameLimit
   return Math.max(previous - limit, Math.min(previous + limit, target));
 }
 
-// OpenF1's approximate coordinates cannot establish an exact lateral racing
-// line. We place cars on the site's line and use a small, deterministic spread
-// for close groups so that real longitudinal overtakes remain visible.
+// OpenF1 XY provides relative passing side after removing the FIA-map bias.
+// Low-confidence and legacy frames fall back to a deterministic separation.
 export function computeReplayPlacements(cars, gridU, trackGap, sourceLapMeters = 4927) {
   const placements = new Map();
   const ordered = [...cars].sort((a, b) => a.progressMeters - b.progressMeters);
@@ -62,7 +61,11 @@ export function computeReplayPlacements(cars, gridU, trackGap, sourceLapMeters =
     const u = trackGap.behind(gridU, -renderedMetres);
     const lane = car.pitLaneStart ? PIT_START_LANE_CENTER
       : car.gridPosition % 2 ? -GRID_LANE_CENTER : GRID_LANE_CENTER;
-    const race = racingLineOffset(u);
+    const gpsConfidence = clamp01(car.lateralConfidence || 0);
+    const gpsResidual = Number.isFinite(car.lateralMeters)
+      ? Math.max(-3.2, Math.min(3.2, car.lateralMeters)) : 0;
+    const race = Math.max(-3.55, Math.min(3.55,
+      racingLineOffset(u) + gpsConfidence * gpsResidual));
     // Both 2025 pit starters begin before the final 65 m exit taper. Keep
     // them in the pit lane until that opening, then rejoin by station +230 m.
     const startBlend = car.pitLaneStart
@@ -94,7 +97,8 @@ export function computeReplayPlacements(cars, gridU, trackGap, sourceLapMeters =
       const laneIndex = stable.findIndex(other => other.number === car.number);
       const target = (laneIndex - (stable.length - 1) / 2) * spread;
       const placement = placements.get(car.number);
-      placement.offset += (target - placement.offset) * closeness * afterStart;
+      placement.offset += (target - placement.offset) * closeness * afterStart
+        * (1 - clamp01(car.lateralConfidence || 0));
     }
   }
 
@@ -129,7 +133,8 @@ export function computeReplayPlacements(cars, gridU, trackGap, sourceLapMeters =
     const strength = smoothstep(neighbours)
       * smoothstep((current.car.progressMeters - 90) / 90);
     const placement = placements.get(current.car.number);
-    placement.offset += (target - placement.offset) * strength;
+    placement.offset += (target - placement.offset) * strength
+      * (1 - clamp01(current.car.lateralConfidence || 0));
   }
   return placements;
 }

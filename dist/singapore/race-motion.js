@@ -118,8 +118,10 @@ export function createRaceController(THREE, curve, car, options = {}) {
   const spacing = length / count;
   const headingSpan = clamp(spacing * 2.5, 12, 19);
   const rawCurvature = new Float32Array(count);
+  const signedCurvature = new Float32Array(count);
   const limit = new Float32Array(count);
   const speedProfile = new Float32Array(count);
+  const steeringProfile = new Float32Array(count);
   const segmentMetres = new Float32Array(count);
   const pointBefore = new THREE.Vector3();
   const pointHere = new THREE.Vector3();
@@ -138,6 +140,9 @@ export function createRaceController(THREE, curve, car, options = {}) {
     const angle = Math.atan2(cross, clamp(inVec.dot(outVec), -1, 1));
     const meanSpan = (pointBefore.distanceTo(pointHere) + pointHere.distanceTo(pointAfter)) * .5;
     rawCurvature[i] = Math.abs(angle) / Math.max(meanSpan, 1);
+    // In this car model positive local-Y steering turns the nose toward +Z;
+    // that has the opposite sign to the XZ cross product above.
+    signedCurvature[i] = -angle / Math.max(meanSpan, 1);
     pointOnLine((i + 1) / count, pointAfter);
     segmentMetres[i] = Math.max(1, pointHere.distanceTo(pointAfter));
   }
@@ -145,11 +150,17 @@ export function createRaceController(THREE, curve, car, options = {}) {
   // Smooth within approximately 25 m without merging the S-corner apexes.
   for (let i = 0; i < count; i++) {
     let curvature = 0;
+    let steeringCurvature = 0;
     for (let j = -2; j <= 2; j++) {
       const weight = j === 0 ? 3 : Math.abs(j) === 1 ? 2 : 1;
       curvature += rawCurvature[(i + j + count) % count] * weight;
+      steeringCurvature += signedCurvature[(i + j + count) % count] * weight;
     }
     curvature /= 9;
+    steeringCurvature /= 9;
+    steeringProfile[i] = clamp(Math.atan(
+      (WHEEL_GEOMETRY.rearX - WHEEL_GEOMETRY.frontX) * steeringCurvature,
+    ), -.32, .32);
     limit[i] = clamp(Math.sqrt(lateralAcceleration / Math.max(curvature, 0.0002)), minCornerSpeed, maxSpeed);
     const metres = i / count * CIRCUIT_METERS;
     for (const [apex, speedKmh, spread] of CORNER_CAPS) {
@@ -177,6 +188,7 @@ export function createRaceController(THREE, curve, car, options = {}) {
   }
 
   const tangent = new THREE.Vector3();
+  let steeringPivots = null;
   const stats = {
     running: false,
     progress: startU,
@@ -199,6 +211,19 @@ export function createRaceController(THREE, curve, car, options = {}) {
     const index = Math.floor(sample);
     const blend = sample - index;
     return profile[index] * (1 - blend) + profile[(index + 1) % count] * blend;
+  }
+
+  function steerFrontWheels(u) {
+    // The wheel splitter is attached after the race controller is created.
+    // Resolve its two existing pivots lazily, then reuse them every frame.
+    if (!steeringPivots) {
+      const left = car.getObjectByName?.('Animated wheel front-left');
+      const right = car.getObjectByName?.('Animated wheel front-right');
+      if (!left || !right) return;
+      steeringPivots = [left, right];
+    }
+    const angle = interpolated(steeringProfile, u);
+    for (const pivot of steeringPivots) pivot.rotation.y = angle;
   }
 
   function placeCar(replayOffset = null, visualU = stats.progress) {
@@ -239,6 +264,7 @@ export function createRaceController(THREE, curve, car, options = {}) {
     const rearOrigin = rearHeight - rearX * Math.sin(pitch) - wheelBottomAtOrigin;
     car.position.y = (frontOrigin + rearOrigin) * .5;
     car.rotation.set(0, yaw, pitch);
+    steerFrontWheels(visualU);
     stats.lateralOffset = offset;
     stats.sectionName = sectionAt(stats.progress);
   }

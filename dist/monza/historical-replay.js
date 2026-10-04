@@ -6,6 +6,8 @@ const SAMPLE = Object.freeze({
   brake: 4,
   gear: 5,
   officialPosition: 6,
+  lateralMeters: 7,
+  lateralConfidence: 8,
 });
 
 function clamp(value, min, max) {
@@ -39,6 +41,14 @@ export function interpolateReplaySample(samples, time) {
     brakePct: mix(SAMPLE.brake),
     gear: before[SAMPLE.gear],
     officialPosition: before[SAMPLE.officialPosition] ?? after[SAMPLE.officialPosition] ?? null,
+    // Singapore records two optional GPS-derived fields. Legacy Monza tuples
+    // have seven columns and retain their existing synthetic lateral path.
+    lateralMeters: Number.isFinite(before[SAMPLE.lateralMeters])
+      && Number.isFinite(after[SAMPLE.lateralMeters])
+      ? mix(SAMPLE.lateralMeters) : null,
+    lateralConfidence: Number.isFinite(before[SAMPLE.lateralConfidence])
+      && Number.isFinite(after[SAMPLE.lateralConfidence])
+      ? clamp(mix(SAMPLE.lateralConfidence), 0, 1) : 0,
   };
 }
 

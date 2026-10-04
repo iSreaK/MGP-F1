@@ -7,6 +7,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { carByKey } from '../../dist/car-catalog.js';
 import { SINGAPORE_2025_ROSTER, SINGAPORE_2025_TRACK_LENGTH_METERS } from '../../dist/singapore/replay-roster.js';
+import { TRACK_POINTS } from '../../dist/singapore/track-data.js';
+import { reconstructGpsLateral } from './gps-lateral.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const RAW = process.env.SINGAPORE_REPLAY_RAW_DIR || join(ROOT, 'raw');
@@ -650,7 +652,7 @@ async function main() {
       fieldCount: 20, renderedModelCount: 19,
       pauses: pauses.map(pause => ({ startSec: relativeSeconds(pause.start, start), endSec: relativeSeconds(pause.end, start) })),
       reconstruction: {
-        progress: 'Vitesses OpenF1 intégrées et recalées à chaque passage de ligne. Le tracé FIA 2025 mesure 4 927 m ; la distance officielle de 305 337 m sur 62 tours situe la ligne de contrôle 137 m avant le départ. Les positions latérales exactes ne sont pas établies.',
+        progress: 'Vitesses OpenF1 intégrées et recalées à chaque passage de ligne. Le tracé FIA 2025 mesure 4 927 m ; la distance officielle de 305 337 m sur 62 tours situe la ligne de contrôle 137 m avant le départ. Les écarts latéraux relatifs sont reconstruits des XY OpenF1 avec indicateur de confiance ; la trajectoire absolue reste approximative.',
         telemetryRepair: 'Deux courts segments de télémétrie invalide sont estimés depuis des tours valides du même pilote ; les valeurs isolées de pédalier hors plage sont interpolées ou neutralisées. Tous les comptes de correction sont conservés dans telemetryRepair.',
         grid: 'Espacement longitudinal dérivé des positions XY OpenF1 pré-départ et de la longueur mesurée du tour. La première case sert de repère spatial ; son décalage exact par rapport à la ligne de départ reste inconnu.',
         pitLane: 'Gasly et Albon partent de la voie des stands. Leur station longitudinale initiale est projetée depuis les coordonnées OpenF1 sur l’axe de la grille ; la trajectoire de la voie des stands reste approximative.',
@@ -658,7 +660,8 @@ async function main() {
     },
     // The tuples' position field is the OFFICIAL rank in the full race field.
     // It is not a rank computed among the visible cars.
-    sampleFields: ['tSec', 'progressMeters', 'speedKph', 'throttlePct', 'brakePct', 'gear', 'officialPosition'],
+    sampleFields: ['tSec', 'progressMeters', 'speedKph', 'throttlePct', 'brakePct',
+      'gear', 'officialPosition', 'lateralMeters', 'lateralConfidence'],
     drivers: {},
     officialField: SINGAPORE_2025_ROSTER.map(driver => ({
       number: driver.replayNumber, name: driver.name,
@@ -698,22 +701,30 @@ async function main() {
     const anchors = makeAnchors(driver.laps, startOffsetMeters, pauses, driver.finish);
     const segments = anchors.slice(0, -1)
       .map((anchor, index) => makeSegment(anchor, anchors[index + 1], driver.locations, pauses));
-    return { ...driver, startOffsetMeters, anchors, segments, pauses,
-      smoothedProgress: smoothProgress(frameTimes, segments, anchors, pauses),
-      ownPositions: positions.filter(row => row.driver_number === driver.number) };
+    const smoothedProgress = smoothProgress(frameTimes, segments, anchors, pauses);
+    const preparedDriver = { ...driver, startOffsetMeters, anchors, segments, pauses,
+      smoothedProgress, ownPositions: positions.filter(row => row.driver_number === driver.number) };
+    return { ...preparedDriver,
+      reconstructed: rebuildProgressFromSpeed(preparedDriver, frameTimes,
+        visualPhaseShiftMeters, []) };
   });
+
+  const gpsLateral = reconstructGpsLateral(prepared, frameTimes, TRACK_POINTS,
+    TRACK_LENGTH_METERS, CONTROL_LINE_OFFSET_METERS, pit);
+  result.session.gpsLateral = gpsLateral.quality;
 
   for (const driver of prepared) {
     const { segments, ownPositions } = driver;
-    const reconstructed = rebuildProgressFromSpeed(driver, frameTimes,
-      visualPhaseShiftMeters, []);
+    const reconstructed = driver.reconstructed;
     const ownIntervals = intervals.filter(row => row.driver_number === driver.number);
     const ownPit = pit.filter(row => row.driver_number === driver.number);
     const ownStints = stints.filter(row => row.driver_number === driver.number)
       .sort((a, b) => a.stint_number - b.stint_number);
     const samples = [];
     const telemetryIndex = { value: 0 }, positionIndex = { value: 0 };
-    for (const t of frameTimes) {
+    const lateralSamples = gpsLateral.byNumber.get(driver.number);
+    for (let frameIndex = 0; frameIndex < frameTimes.length; frameIndex++) {
+      const t = frameTimes[frameIndex];
       const isFinished = t >= driver.finish;
       const progress = reconstructed.values.get(t);
       const telemetry = isFinished
@@ -723,7 +734,9 @@ async function main() {
         ? driver.finalPosition : ownPositions.length
         ? officialPositionAt(ownPositions, t, positionIndex, driver.gridPosition)
         : driver.gridPosition;
-      samples.push([relativeSeconds(t, start), round(progress, 1), ...telemetry, officialPosition]);
+      const [lateral, confidence] = lateralSamples[frameIndex];
+      samples.push([relativeSeconds(t, start), round(progress, 1),
+        ...telemetry, officialPosition, round(lateral, 1), round(confidence, 2)]);
     }
     const driverResult = {
       name: driver.name, number: driver.number, gridPosition: driver.gridPosition,
@@ -767,6 +780,9 @@ async function main() {
   console.log(`Écrit ${OUTPUT} (${(Buffer.byteLength(JSON.stringify(result)) / 1024 / 1024).toFixed(2)} MiB)`);
   console.log(`Pause(s) : ${result.session.pauses.map(p => `${p.startSec}s–${p.endSec}s`).join(', ')}`);
   console.log(`Ligne de contrôle FIA : ${visualPhaseShiftMeters} m avant départ ; espacement de grille estimé : ${round(gridGeometry.gridSlotSpacingMeters, 2)} m.`);
+  console.log(`GPS latéral : phase +${gpsLateral.quality.phaseMetres} m, `
+    + `calage ${gpsLateral.quality.registrationRmsMetres} m RMS, `
+    + `${gpsLateral.quality.confidentFrames}/${gpsLateral.quality.totalFrames} frames de confiance.`);
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

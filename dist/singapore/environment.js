@@ -186,50 +186,76 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
     const bayAlong = bayDelta.dot(waterFrame.forward);
     if (Math.abs(bayLateral) < 195 && Math.abs(bayAlong) < 365) continue;
     if (Math.abs(u - gridU) < .11 && side < 0) continue;
+    const style = height > 80 ? 0 : height > 38 ? 1 : 2;
     buildings.push({ point, width, depth, height, quaternion: frame.quaternion,
-      colour: random() < .5 ? 0xb5c4ca : 0x9eabb1 });
+      style, colour: style === 0
+        ? random() < .5 ? 0x9fbbc6 : 0x819aa5
+        : style === 1 ? random() < .5 ? 0xbab5a8 : 0x8f9a9b
+          : random() < .5 ? 0xaaa69b : 0x879090 });
   }
-  const facadeTexture = (() => {
+  const facadeTextures = [0, 1, 2].map(style => {
     const canvas = document.createElement('canvas');
     canvas.width = 128; canvas.height = 256;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#526976';
+    ctx.fillStyle = ['#374a59', '#4d5354', '#6b6e6d'][style];
     ctx.fillRect(0, 0, 128, 256);
-    for (let row = 0; row < 20; row++) for (let col = 0; col < 8; col++) {
-      const lit = random() > .39;
-      ctx.fillStyle = lit ? (random() < .67 ? '#b8d8e5' : '#d9c7a1') : '#263e4b';
-      ctx.fillRect(col * 16 + 3, row * 12 + 3, 9, 6);
+    const rows = [21, 15, 8][style];
+    const cols = [10, 8, 6][style];
+    const cellW = 128 / cols, cellH = 256 / rows;
+    for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
+      const lit = random() > [.32, .52, .66][style];
+      ctx.fillStyle = lit
+        ? (random() < [.78, .28, .35][style] ? '#b7d6e2' : '#ddc497')
+        : ['#1b303c', '#2d3335', '#434a48'][style];
+      ctx.fillRect(col * cellW + cellW * .19, row * cellH + cellH * .25,
+        cellW * .61, cellH * .43);
+    }
+    if (style === 2) {
+      ctx.fillStyle = '#7d8581';
+      for (let y = 0; y < 256; y += 32) ctx.fillRect(0, y, 128, 2);
     }
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     return texture;
-  })();
-  const buildingMaterial = new THREE.MeshStandardMaterial({ map: facadeTexture,
-    color: 0xffffff, vertexColors: true, metalness: .28, roughness: .62,
-    emissiveMap: facadeTexture, emissive: 0xb4d9eb, emissiveIntensity: .72 });
-  const blocks = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1),
-    buildingMaterial, buildings.length);
-  blocks.name = 'Marina Bay office and hotel blocks';
+  });
+  const facadeTexture = facadeTextures[0];
   const instanceColour = new THREE.Color();
-  for (let i = 0; i < buildings.length; i++) {
-    const building = buildings[i];
-    helper.position.copy(building.point);
-    helper.position.y = building.height / 2;
-    helper.quaternion.copy(building.quaternion);
-    helper.scale.set(building.width, building.height, building.depth);
-    helper.updateMatrix();
-    blocks.setMatrixAt(i, helper.matrix);
-    blocks.setColorAt(i, instanceColour.setHex(building.colour));
+  for (let style = 0; style < facadeTextures.length; style++) {
+    const sameStyle = buildings.filter(building => building.style === style);
+    if (!sameStyle.length) continue;
+    const texture = facadeTextures[style];
+    const material = new THREE.MeshStandardMaterial({ map: texture,
+      color: 0xffffff, vertexColors: true,
+      metalness: style === 0 ? .32 : .13,
+      roughness: style === 0 ? .48 : .78,
+      emissiveMap: texture,
+      emissive: style === 0 ? 0x9bbbc6 : 0xe0bd8e,
+      emissiveIntensity: style === 0 ? .52 : .37 });
+    const blocks = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1),
+      material, sameStyle.length);
+    blocks.name = ['Marina Bay glass office towers',
+      'Marina Bay hotels and apartments', 'Marina Bay civic low rises'][style];
+    for (let i = 0; i < sameStyle.length; i++) {
+      const building = sameStyle[i];
+      helper.position.copy(building.point);
+      helper.position.y = building.height / 2;
+      helper.quaternion.copy(building.quaternion);
+      helper.scale.set(building.width, building.height, building.depth);
+      helper.updateMatrix();
+      blocks.setMatrixAt(i, helper.matrix);
+      blocks.setColorAt(i, instanceColour.setHex(building.colour));
+    }
+    blocks.instanceMatrix.needsUpdate = true;
+    blocks.instanceColor.needsUpdate = true;
+    blocks.frustumCulled = false;
+    group.add(blocks);
   }
-  blocks.instanceMatrix.needsUpdate = true;
-  if (buildings.length) blocks.instanceColor.needsUpdate = true;
-  blocks.frustumCulled = false;
-  group.add(blocks);
-  const crownBuildings = buildings.filter((_, index) => index % 3 === 0);
+  const crownBuildings = buildings.filter((_, index) => index % 2 === 0);
   const crowns = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1),
-    new THREE.MeshBasicMaterial({ color: 0x729eac, transparent: true,
-      opacity: .76, depthWrite: false }), crownBuildings.length);
-  crowns.name = 'Subtle illuminated hotel and office rooflines';
+    new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true,
+      transparent: true, opacity: .72, depthWrite: false,
+      toneMapped: false }), crownBuildings.length);
+  crowns.name = 'Illuminated hotel and office rooflines';
   for (let i = 0; i < crownBuildings.length; i++) {
     const building = crownBuildings[i];
     helper.position.copy(building.point);
@@ -238,8 +264,11 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
     helper.scale.set(building.width + .8, .35, building.depth + .8);
     helper.updateMatrix();
     crowns.setMatrixAt(i, helper.matrix);
+    crowns.setColorAt(i, instanceColour.setHex(building.style === 0
+      ? 0x729eac : building.style === 1 ? 0xbaa485 : 0x9da9a0));
   }
   crowns.instanceMatrix.needsUpdate = true;
+  crowns.instanceColor.needsUpdate = true;
   crowns.frustumCulled = false;
   group.add(crowns);
 
@@ -337,6 +366,94 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
   skyparkRim.position.set(5, 202.9, 0);
   sands.add(skyparkRim);
 
+  // The lotus-shaped ArtScience Museum and the Helix Bridge make the Marina
+  // Bay side recognisable from a race camera. Their offsets follow the 2025
+  // circuit-park map's relative arrangement, not surveyed building footprints.
+  const museum = new THREE.Group();
+  museum.name = 'ArtScience Museum illuminated lotus';
+  museum.position.copy(worldAt(sandsU, 250, -110));
+  museum.quaternion.copy(sandsFrame.quaternion);
+  group.add(museum);
+  const museumStone = new THREE.MeshStandardMaterial({ color: 0xd8d9cf,
+    roughness: .73, emissive: 0x728597, emissiveIntensity: .26,
+    side: THREE.DoubleSide });
+  const museumBase = new THREE.Mesh(new THREE.CylinderGeometry(33, 36, 5, 20),
+    museumStone);
+  museumBase.position.y = 2.5;
+  museum.add(museumBase);
+  const museumRim = new THREE.Mesh(new THREE.TorusGeometry(34.5, .34, 5, 48),
+    new THREE.MeshBasicMaterial({ color: 0xd5e2df, toneMapped: false }));
+  museumRim.rotation.x = Math.PI / 2;
+  museumRim.position.y = 5.1;
+  museum.add(museumRim);
+  const museumGlass = new THREE.Mesh(new THREE.CylinderGeometry(13, 22, 31, 12),
+    glass);
+  museumGlass.position.y = 20;
+  museum.add(museumGlass);
+  const petalShape = new THREE.Shape();
+  petalShape.moveTo(-2.2, 5);
+  petalShape.quadraticCurveTo(4, 15, 8, 36);
+  petalShape.quadraticCurveTo(12, 51, 18, 55);
+  petalShape.quadraticCurveTo(12, 60, 7, 50);
+  petalShape.quadraticCurveTo(1, 30, -2.2, 5);
+  const petalGeometry = new THREE.ExtrudeGeometry(petalShape, {
+    depth: 2.4, bevelEnabled: true, bevelThickness: .45,
+    bevelSize: .5, bevelSegments: 2, curveSegments: 9,
+  });
+  const petals = new THREE.InstancedMesh(petalGeometry, museumStone, 10);
+  petals.name = 'Ten ArtScience lotus petals';
+  for (let i = 0; i < 10; i++) {
+    helper.position.set(0, 0, 0);
+    helper.quaternion.setFromAxisAngle(up, i * Math.PI / 5);
+    helper.scale.set(1, 1, 1);
+    helper.updateMatrix();
+    petals.setMatrixAt(i, helper.matrix);
+  }
+  petals.instanceMatrix.needsUpdate = true;
+  museum.add(petals);
+
+  const bridgeStart = worldAt(sandsU, 300, -80);
+  const bridgeEnd = worldAt(flyerU, 140, -130);
+  const bridgeForward = bridgeEnd.clone().sub(bridgeStart).setY(0);
+  const bridgeLength = bridgeForward.length();
+  bridgeForward.normalize();
+  const bridgeAcross = new THREE.Vector3(bridgeForward.z, 0, -bridgeForward.x);
+  const helix = new THREE.Group();
+  helix.name = 'Helix Bridge over Marina Bay';
+  helix.position.copy(bridgeStart).add(bridgeEnd).multiplyScalar(.5);
+  helix.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(
+    bridgeAcross, up, bridgeForward));
+  group.add(helix);
+  const bridgeSteel = new THREE.MeshStandardMaterial({ color: 0xaabcc2,
+    metalness: .55, roughness: .4, emissive: 0x6e9aad, emissiveIntensity: .36 });
+  const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(12.5, .72, bridgeLength),
+    new THREE.MeshStandardMaterial({ color: 0x5b686d, roughness: .83 }));
+  bridgeDeck.position.y = 6.8;
+  helix.add(bridgeDeck);
+  for (const side of [-1, 1]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(.32, 1.15, bridgeLength),
+      bridgeSteel);
+    rail.position.set(side * 6.2, 8, 0);
+    helix.add(rail);
+    const litEdge = new THREE.Mesh(new THREE.BoxGeometry(.48, .16, bridgeLength),
+      new THREE.MeshBasicMaterial({ color: 0x9bbfc4, toneMapped: false }));
+    litEdge.position.set(side * 5.8, 7.7, 0);
+    helix.add(litEdge);
+    for (const phaseOffset of [0, Math.PI]) {
+      const points = [];
+      for (let i = 0; i <= 128; i++) {
+        const t = i / 128;
+        const phase = t * Math.PI * 14 + phaseOffset;
+        points.push(new THREE.Vector3(side * (7.2 + Math.cos(phase) * 1.5),
+          12 + Math.sin(phase) * 3.4, (t - .5) * bridgeLength));
+      }
+      const rib = new THREE.Mesh(new THREE.TubeGeometry(
+        new THREE.CatmullRomCurve3(points), 256, .27, 6, false), bridgeSteel);
+      rib.name = 'Illuminated Helix Bridge rib';
+      helix.add(rib);
+    }
+  }
+
   // Twin Esplanade domes are low across the bay from the tall hotel skyline.
   const esplanadeU = turnU(14) ?? .62;
   const esplanade = new THREE.Group();
@@ -393,5 +510,5 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
   }
 
   return { group, buildingCount: buildings.length, grandstandCount: stands.length,
-    landmarks: { flyer, sands, esplanade, water } };
+    landmarks: { flyer, sands, museum, helix, esplanade, water } };
 }

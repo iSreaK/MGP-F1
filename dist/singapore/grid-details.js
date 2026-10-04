@@ -96,6 +96,11 @@ export function addSingaporeGridDetails(THREE, scene, curve, polyline, landmarks
   const entry = sourceStation(landmarks?.pitStraight?.entryIndex ?? polyline.length - 88);
   const exit = sourceStation(landmarks?.pitStraight?.exitIndex ?? 84);
   const taper = 65;
+  // Full-width pit lane spans these offsets from the circuit centreline.
+  // The live replay drives at -14.5 m and moves toward -18 m for a stop.
+  const pitNearEdge = -halfWidth - .15 - 2.15;
+  const pitFarEdge = -halfWidth - .18 - 14.6;
+  const pitWorkingDivider = -16.25;
   const smooth = (a, b, value) => {
     const t = Math.max(0, Math.min(1, (value - a) / (b - a)));
     return t * t * (3 - 2 * t);
@@ -134,17 +139,19 @@ export function addSingaporeGridDetails(THREE, scene, curve, polyline, landmarks
   const pitLine = [], pitDashes = [], speedLines = [];
   for (let s = entry + taper; s < exit - taper; s += 3.5) {
     const end = Math.min(exit - taper, s + 3.5);
-    pitLine.push([s, end, -halfWidth - 16.78, -halfWidth - 16.65]);
-    pitLine.push([s, end, -halfWidth - 2.38, -halfWidth - 2.25]);
+    // Both edge lines stay on the generated pit asphalt. The former outside
+    // line was roughly two metres beyond the lane's visible outer edge.
+    pitLine.push([s, end, pitFarEdge + .05, pitFarEdge + .15]);
+    pitLine.push([s, end, pitNearEdge - .15, pitNearEdge - .05]);
     if (Math.floor((s - entry) / 3.5) % 3 === 0) {
-      pitDashes.push([s, Math.min(s + 2, end), PIT_START_LANE_CENTER - .07,
-        PIT_START_LANE_CENTER + .07]);
+      pitDashes.push([s, Math.min(s + 2, end), pitWorkingDivider - .055,
+        pitWorkingDivider + .055]);
     }
   }
   speedLines.push([entry + taper + 7, entry + taper + 7.35,
-    -halfWidth - 2.4, -halfWidth - 16.7]);
+    pitNearEdge - .16, pitFarEdge + .16]);
   speedLines.push([exit - taper - 7.35, exit - taper - 7,
-    -halfWidth - 2.4, -halfWidth - 16.7]);
+    pitNearEdge - .16, pitFarEdge + .16]);
   flatQuads('Pit lane edge paint', white, pitLine, -.007);
   flatQuads('Pit working-lane dashed divider', yellow, pitDashes, -.004);
   flatQuads('Pit speed-control lines', white, speedLines, .004);

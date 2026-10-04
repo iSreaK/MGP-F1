@@ -168,6 +168,7 @@ export function addSingaporeTrackside(THREE, scene, curve, frames, landmarks, op
   // shadow-casting point lights would make the replay unusable.
   const mastStep = 32;
   const mastCount = Math.ceil(length / mastStep);
+  const lightStations = [];
   const masts = new THREE.InstancedMesh(new THREE.CylinderGeometry(.105, .16, 10.2, 7),
     new THREE.MeshStandardMaterial({ color: 0x7a858b, metalness: .47,
       roughness: .58 }), mastCount);
@@ -184,6 +185,12 @@ export function addSingaporeTrackside(THREE, scene, curve, frames, landmarks, op
     const side = i % 3 === 0 ? -1 : 1;
     const lateral = side * (halfWidth + 5.2);
     const base = frame.point.clone().addScaledVector(frame.across, lateral);
+    lightStations.push({
+      head: base.clone().addScaledVector(frame.across, -side * 2.0)
+        .setY(trackY + 10.31),
+      target: frame.point.clone().setY(trackY),
+      colour: i % 4 === 0 ? 0xffecd9 : 0xe6f2ff,
+    });
     helper.position.copy(base);
     helper.position.y = trackY + 5.1;
     helper.quaternion.copy(frame.quaternion);
@@ -203,15 +210,80 @@ export function addSingaporeTrackside(THREE, scene, curve, frames, landmarks, op
     mesh.frustumCulled = false;
     group.add(mesh);
   }
-  const importantStations = [gridU, turnU(1), turnU(7), turnU(9), turnU(14), turnU(16), turnU(19)]
-    .filter(Number.isFinite);
-  for (const u of importantStations) {
-    const frame = frameAt(u);
-    const lamp = new THREE.PointLight(0xe5f5ff, 22, 115, 2);
-    lamp.name = 'Night race local fill light';
-    lamp.position.copy(frame.point).addScaledVector(frame.across, halfWidth + 2.5);
-    lamp.position.y += 13;
-    group.add(lamp);
+  // Paint a subtle pool of light under every mast in one draw call. The actual
+  // lights below only shade nearby cars, keeping the 19-car replay affordable.
+  const glowVertices = [], glowColours = [], glowIndices = [];
+  for (let i = 0; i < mastCount; i++) {
+    const colour = new THREE.Color(lightStations[i].colour);
+    const start = glowVertices.length / 3;
+    for (const along of [-20, -10, 0, 10, 20]) {
+      const frame = frameAt(i / mastCount + along / length);
+      const axial = Math.max(0, Math.cos(Math.PI * along / 40)) ** 2;
+      for (const lateral of [-halfWidth, -halfWidth / 2, 0, halfWidth / 2, halfWidth]) {
+        const across = 1 - .35 * (Math.abs(lateral) / halfWidth) ** 2;
+        const alpha = .14 * axial * across;
+        glowVertices.push(frame.point.x + frame.across.x * lateral,
+          trackY + .012, frame.point.z + frame.across.z * lateral);
+        glowColours.push(colour.r, colour.g, colour.b, alpha);
+      }
+    }
+    for (let row = 0; row < 4; row++) for (let col = 0; col < 4; col++) {
+      const a = start + row * 5 + col;
+      glowIndices.push(a, a + 5, a + 1, a + 1, a + 5, a + 6);
+    }
+  }
+  const glowGeometry = new THREE.BufferGeometry();
+  glowGeometry.setAttribute('position', new THREE.Float32BufferAttribute(glowVertices, 3));
+  glowGeometry.setAttribute('color', new THREE.Float32BufferAttribute(glowColours, 4));
+  glowGeometry.setIndex(glowIndices);
+  const glowMaterial = new THREE.MeshBasicMaterial({ vertexColors: true,
+    transparent: true, opacity: .9, depthWrite: false, side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending, toneMapped: false });
+  const pools = new THREE.Mesh(glowGeometry, glowMaterial);
+  pools.name = 'Soft floodlight pools on Singapore asphalt';
+  pools.frustumCulled = false;
+  group.add(pools);
+
+  const activeFloodlights = Array.from({ length: 3 }, () => {
+    const lamp = new THREE.SpotLight(0xe6f2ff, 0, 75, .83, .67, 2);
+    lamp.name = 'Local race floodlight';
+    lamp.castShadow = false;
+    lamp.userData.stationIndex = -1;
+    group.add(lamp, lamp.target);
+    return lamp;
+  });
+  const nearby = [];
+  function updateLighting(focus) {
+    if (!focus) return;
+    nearby.length = 0;
+    for (let i = 0; i < lightStations.length; i++) {
+      const target = lightStations[i].target;
+      const distanceSq = (target.x - focus.x) ** 2 + (target.z - focus.z) ** 2;
+      if (distanceSq < 55 * 55) nearby.push({ i, distanceSq });
+    }
+    nearby.sort((a, b) => a.distanceSq - b.distanceSq);
+    nearby.length = Math.min(nearby.length, activeFloodlights.length);
+    const wanted = new Set(nearby.map(item => item.i));
+    for (const lamp of activeFloodlights) {
+      if (!wanted.has(lamp.userData.stationIndex)) {
+        lamp.intensity = 0;
+        lamp.userData.stationIndex = -1;
+      }
+    }
+    for (const item of nearby) {
+      let lamp = activeFloodlights.find(candidate => candidate.userData.stationIndex === item.i);
+      if (!lamp) lamp = activeFloodlights.find(candidate => candidate.userData.stationIndex < 0);
+      if (!lamp) continue;
+      const station = lightStations[item.i];
+      lamp.userData.stationIndex = item.i;
+      lamp.position.copy(station.head);
+      lamp.target.position.copy(station.target);
+      lamp.color.setHex(station.colour);
+      const distance = Math.sqrt(item.distanceSq);
+      const fade = Math.max(0, Math.min(1, (55 - distance) / 25));
+      lamp.intensity = 150 * fade;
+      lamp.target.updateMatrixWorld();
+    }
   }
 
   const paint = new THREE.MeshBasicMaterial({ color: 0xd8ddda,
@@ -290,5 +362,6 @@ export function addSingaporeTrackside(THREE, scene, curve, frames, landmarks, op
   }
 
   return { group, barrierCount, fencePostCount: fenceStations.length,
-    floodlightCount: mastCount };
+    floodlightCount: mastCount, lightPoolTriangles: glowIndices.length / 3,
+    updateLighting, setWetLighting(wet) { glowMaterial.opacity = wet ? 1 : .9; } };
 }
