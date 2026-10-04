@@ -37,6 +37,59 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
     return frame.point.clone().addScaledVector(frame.across, across)
       .addScaledVector(frame.forward, forward).setY(0);
   };
+  // The FIA centreline loops close to itself here. A landmark offset from one
+  // corner can still cover another stretch of road, so reserve its full ground
+  // footprint against every centreline segment and against the city blocks.
+  const esplanadeU = turnU(14) ?? .62;
+  const esplanadeFrame = frameAt(esplanadeU);
+  const esplanadeSite = worldAt(esplanadeU, -115, 20);
+  esplanadeSite.x += 45;
+  const grandstandSpecs = [
+    [1, 1, -120, 70], [2, -1, 35, 65], [7, 1, -65, 80],
+    [10, -1, 48, 72], [18, -1, -55, 100], [19, 1, -95, 85],
+  ];
+  const grandstandSites = grandstandSpecs.flatMap(([corner, side, shift, width]) => {
+    const u = turnU(corner);
+    if (!Number.isFinite(u)) return [];
+    const frame = frameAt(u + shift / length);
+    const position = frame.point.clone().addScaledVector(frame.across,
+      side * (halfWidth + 29));
+    // The original T2 stand cut across the returning T3 section. Place it
+    // farther along the same straight, behind its barrier and aligned with it.
+    if (corner === 2) position.addScaledVector(frame.across, -50)
+      .addScaledVector(frame.forward, 60);
+    position.y = 0;
+    return [{ corner, side, shift, width, frame, position }];
+  });
+  const flyerU = turnU(18) ?? .94;
+  const flyerFrame = frameAt(flyerU);
+  const flyerSite = worldAt(flyerU, 150, 18);
+  const sandsU = turnU(16) ?? .79;
+  const helixStart = worldAt(sandsU, 300, -80);
+  const helixEnd = worldAt(flyerU, 140, -130);
+  const segmentDistance = (point, a, b) => {
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const t = Math.max(0, Math.min(1,
+      ((point.x - a.x) * dx + (point.z - a.z) * dz) / (dx * dx + dz * dz)));
+    return Math.hypot(point.x - a.x - t * dx, point.z - a.z - t * dz);
+  };
+  const overlapsLandmark = (point, radius) => {
+    const esplanadeDelta = point.clone().sub(esplanadeSite);
+    if (Math.abs(esplanadeDelta.dot(esplanadeFrame.across)) < 59 + radius
+      && Math.abs(esplanadeDelta.dot(esplanadeFrame.forward)) < 29 + radius) return true;
+    const flyerDelta = point.clone().sub(flyerSite);
+    if (Math.abs(flyerDelta.dot(flyerFrame.across)) < 79 + radius
+      && Math.abs(flyerDelta.dot(flyerFrame.forward)) < 9 + radius) return true;
+    if (segmentDistance(point, helixStart, helixEnd) < 9 + radius) return true;
+    for (const site of grandstandSites) {
+      const delta = point.clone().sub(site.position);
+      if (Math.abs(delta.dot(site.frame.across) - site.side * 12) < 18 + radius
+        && Math.abs(delta.dot(site.frame.forward)) < (site.width + 5) / 2 + radius) {
+        return true;
+      }
+    }
+    return false;
+  };
 
   const plazaMaterial = new THREE.MeshStandardMaterial({ color: 0x384047,
     roughness: .93, side: THREE.DoubleSide });
@@ -181,6 +234,7 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
     const height = 17 + random() ** 2 * 110;
     const nearest = trackClearance(point.x, point.z);
     if (nearest < Math.max(width, depth) * .58 + 27) continue;
+    if (overlapsLandmark(point, Math.hypot(width, depth) * .5 + 3)) continue;
     const bayDelta = point.clone().sub(waterPosition);
     const bayLateral = bayDelta.dot(waterFrame.across);
     const bayAlong = bayDelta.dot(waterFrame.forward);
@@ -274,11 +328,9 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
 
   // Singapore Flyer: the 165 m observation wheel lies beside the T18/T19
   // section and serves as a strong location cue during helicopter shots.
-  const flyerU = turnU(18) ?? .94;
-  const flyerFrame = frameAt(flyerU);
   const flyer = new THREE.Group();
   flyer.name = 'Singapore Flyer observation wheel, stylised';
-  flyer.position.copy(worldAt(flyerU, 150, 18));
+  flyer.position.copy(flyerSite);
   flyer.quaternion.copy(flyerFrame.quaternion);
   group.add(flyer);
   const rim = new THREE.Mesh(new THREE.TorusGeometry(74, 2.15, 9, 96), lamp);
@@ -322,7 +374,6 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
 
   // Marina Bay Sands appears across the water from the southern circuit arc.
   // The three towers and projecting skypark are dimensional approximations.
-  const sandsU = turnU(16) ?? .79;
   const sandsFrame = frameAt(sandsU);
   const sands = new THREE.Group();
   sands.name = 'Marina Bay Sands hotel and skypark, stylised';
@@ -412,8 +463,8 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
   petals.instanceMatrix.needsUpdate = true;
   museum.add(petals);
 
-  const bridgeStart = worldAt(sandsU, 300, -80);
-  const bridgeEnd = worldAt(flyerU, 140, -130);
+  const bridgeStart = helixStart;
+  const bridgeEnd = helixEnd;
   const bridgeForward = bridgeEnd.clone().sub(bridgeStart).setY(0);
   const bridgeLength = bridgeForward.length();
   bridgeForward.normalize();
@@ -455,11 +506,10 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
   }
 
   // Twin Esplanade domes are low across the bay from the tall hotel skyline.
-  const esplanadeU = turnU(14) ?? .62;
   const esplanade = new THREE.Group();
   esplanade.name = 'Esplanade theatres, twin domes';
-  esplanade.position.copy(worldAt(esplanadeU, -115, 20));
-  esplanade.quaternion.copy(frameAt(esplanadeU).quaternion);
+  esplanade.position.copy(esplanadeSite);
+  esplanade.quaternion.copy(esplanadeFrame.quaternion);
   group.add(esplanade);
   for (const x of [-31, 31]) {
     const base = new THREE.Mesh(new THREE.BoxGeometry(53, 8, 55), pale);
@@ -502,18 +552,10 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
     scaffoldHelper.updateMatrix();
     mesh.setMatrixAt(index, scaffoldHelper.matrix);
   };
-  for (const [corner, side, shift, width] of [
-    [1, 1, -120, 70], [2, -1, 35, 65], [7, 1, -65, 80],
-    [10, -1, 48, 72], [18, -1, -55, 100], [19, 1, -95, 85],
-  ]) {
-    const u = turnU(corner);
-    if (!Number.isFinite(u)) continue;
-    const frame = frameAt(u + shift / length);
+  for (const { corner, side, width, frame, position } of grandstandSites) {
     const stand = new THREE.Group();
     stand.name = `Singapore spectator grandstand near turn ${corner}`;
-    stand.position.copy(frame.point).addScaledVector(frame.across,
-      side * (halfWidth + 29));
-    stand.position.y = 0;
+    stand.position.copy(position);
     stand.quaternion.copy(frame.quaternion);
     group.add(stand);
     const stationCount = Math.max(4, Math.ceil(width / 13));
