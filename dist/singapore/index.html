@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#061326" />
+    <meta name="description" content="Explorez le circuit urbain de Marina Bay de nuit et revivez le Grand Prix de Singapour 2025 en 3D." />
+    <title>Singapour · Marina Bay 3D & replay 2025</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23061326'/%3E%3Cpath d='M44 17H22c-7 0-11 4-11 10 0 7 5 10 13 10h12c3 0 5 1 5 4s-2 4-5 4H13v7h23c9 0 14-5 14-12 0-8-5-11-14-11H24c-3 0-4-1-4-3s1-3 4-3h20Z' fill='%23f3ece2'/%3E%3Cpath d='M12 57h40' stroke='%23f5b866' stroke-width='3'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="importmap">
+      {"imports":{"three":"../vendor/three/build/three.module.js"}}
+    </script>
+    <script type="module" src="./main.js"></script>
+  </head>
+  <body>
+    <main class="atlas" id="atlas">
+      <canvas id="scene" role="img" aria-label="Reconstitution interactive en 3D du circuit urbain de Singapour de nuit"></canvas>
+
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">S</span>
+          <div class="brand-type">
+            <p class="eyebrow">MARINA BAY STREET CIRCUIT</p>
+            <h1>SINGAPOUR <span>/ 3D</span></h1>
+          </div>
+        </div>
+        <nav aria-label="Pages du site"><a class="return-link" href="../" aria-label="Retour aux garages des monoplaces"><span aria-hidden="true" class="return-arrow">←</span><span class="return-text">Tous les garages</span></a><a class="return-link" href="../monza/">Monza</a></nav>
+      </header>
+
+      <button type="button" class="immersive-toggle" id="immersive-toggle" aria-pressed="false" aria-keyshortcuts="I" hidden>Mode immersion</button>
+
+      <section class="circuit-data" aria-label="Informations sur le circuit">
+        <p class="data-heading"><span class="data-heading-line" aria-hidden="true"></span> SINGAPOUR · MARINA BAY</p>
+        <div class="data-stats">
+          <div class="data-row"><strong>4,927</strong><span>KM DE PISTE</span></div>
+          <div class="data-row"><strong>19</strong><span>VIRAGES</span></div>
+        </div>
+        <p class="data-note">Circuit urbain · course de nuit</p>
+      </section>
+
+      <section class="race-hud" id="race-hud" aria-label="Statistiques et temps de course" hidden>
+        <div class="race-hud-head"><p class="race-label" aria-hidden="true"><span class="race-live"></span> STATS & TEMPS</p><span class="race-hud-code" aria-hidden="true">SINGAPOUR / GP</span><button type="button" id="race-hud-toggle" class="race-hud-toggle" aria-expanded="false" aria-controls="race-hud-details">Plus</button></div>
+        <p class="race-speed-label">VITESSE INSTANTANÉE</p>
+        <div class="race-readout"><strong id="race-speed">0</strong><span>KM/H</span></div>
+        <div class="race-quick"><div><small>TEMPS DU TOUR</small><strong id="race-lap-time">00:00.0</strong></div><div><small id="race-lap-label">TOUR</small><strong id="race-lap">TOUR 1</strong></div></div>
+        <div id="race-hud-details">
+        <div class="race-timing"><div><small>DERNIER TOUR</small><strong id="race-last-lap">—</strong></div></div>
+        <div class="race-lap"><div><small>DISTANCE PARCOURUE</small><span id="race-distance">0,00 / 4,93 KM</span></div></div>
+        <div class="race-progress" aria-hidden="true"><span id="race-progress"></span></div>
+        <p class="race-section"><span>SECTEUR /</span><strong id="race-section">Pit Straight</strong></p>
+        </div>
+      </section>
+
+      <div class="race-flag-alert" id="race-flag-alert" role="status" aria-live="assertive" aria-atomic="true" hidden>
+        <strong class="race-flag-title"></strong>
+        <span class="race-flag-detail"></span>
+      </div>
+
+      <section class="replay-panel" id="replay-panel" tabindex="-1" aria-label="Replay du Grand Prix de Singapour 2025" hidden>
+        <div class="replay-head">
+          <div>
+            <p class="replay-kicker">REPLAY · GP 2025</p>
+            <h2>Régie</h2>
+          </div>
+          <div class="replay-head-actions"><span class="replay-badge">VOITURES EN CHARGEMENT</span><button type="button" id="replay-panel-toggle" class="replay-panel-toggle" aria-expanded="false" aria-label="Ouvrir la régie">Régie</button></div>
+        </div>
+        <p class="replay-status" id="replay-status" role="status" aria-live="polite">Chargement des données de course…</p>
+        <div class="replay-controls">
+          <button type="button" id="replay-toggle" class="replay-toggle" aria-label="Lire le replay">▶ Lecture</button>
+          <label for="replay-speed">Lecture</label>
+          <select id="replay-speed" aria-label="Vitesse de lecture du replay">
+            <option value="1" selected>×1</option>
+            <option value="4">×4</option>
+            <option value="20">×20</option>
+            <option value="60">×60</option>
+          </select>
+        </div>
+        <button type="button" id="replay-skip-pause" class="replay-skip-pause" hidden>Passer l’interruption →</button>
+        <div class="replay-timeline-head">
+          <label for="replay-timeline">TEMPS DE COURSE</label>
+          <output id="replay-clock" for="replay-timeline">00:00 / 00:00</output>
+        </div>
+        <input type="range" id="replay-timeline" min="0" max="1" value="0" step="any" aria-label="Avancer dans le replay" />
+        <a class="replay-garage-link" id="replay-garage-link" href="../">Voir cette monoplace au garage →</a>
+        <div class="replay-telemetry" aria-label="Télémétrie de la voiture suivie">
+          <div><span>POSITION</span><strong id="replay-official-position">—</strong></div>
+          <div><span title="Rapport de boîte engagé">RAPPORT</span><strong id="replay-gear">—</strong></div>
+          <div><span>ACCÉL.</span><strong id="replay-throttle">—</strong></div>
+          <div><span>FREIN</span><strong id="replay-brake">—</strong></div>
+        </div>
+        <p class="replay-model-note">Course 2025 · monoplaces 2026 du garage. Isack Hadjar figure au classement sans modèle 3D.</p>
+        <div class="replay-ranking-head"><h3>CLASSEMENT</h3></div>
+        <ol class="replay-rankings" id="replay-rankings" aria-label="Classement officiel du Grand Prix de Singapour 2025"></ol>
+      </section>
+
+      <div class="loading" id="loading" role="status" aria-live="polite">
+        <div class="loading-card">
+          <span class="loading-line" aria-hidden="true"></span>
+          <p class="loading-kicker">SINGAPOUR · CIRCUIT 3D</p>
+          <p id="loading-message">Construction du circuit…</p>
+          <small>Le premier affichage peut prendre quelques instants.</small>
+        </div>
+      </div>
+
+      <footer class="toolbar">
+        <p class="gesture-hint">Glisser pour tourner <span>·</span> Molette ou pincement pour zoomer</p>
+        <div class="control-panel">
+          <div class="compact-controls" id="compact-controls" hidden><button type="button" id="quick-pause" class="quick-pause">Ⅱ Pause</button><button type="button" id="controls-toggle" aria-expanded="false" aria-controls="course-actions">Commandes</button></div>
+          <div id="course-actions" class="course-actions">
+          <span class="control-label" aria-hidden="true">EXPLORER SINGAPOUR <span>02 / CIRCUIT</span></span>
+          <p class="control-help" id="control-help">Circuit urbain de nuit. Replay GP 2025 : 19 des 20 pilotes représentés avec les modèles 2026 du garage.</p>
+          <div class="actions">
+            <div class="mode-actions" role="group" aria-label="Choisir un mode de course">
+              <button type="button" id="race" class="race-button" disabled aria-pressed="false" aria-describedby="control-help" title="Lancer une animation libre des voitures">▶&nbsp; Simulation libre</button>
+              <button type="button" id="replay" class="replay-button" disabled aria-pressed="false" aria-describedby="control-help" title="Revoir le Grand Prix de Singapour 2025 avec les données de course">◷&nbsp; Replay GP 2025</button>
+            </div>
+            <span class="action-divider" aria-hidden="true"></span>
+            <div class="view-actions" role="group" aria-label="Explorer le circuit et la caméra">
+              <button type="button" id="overview" disabled title="Afficher l'ensemble du circuit">Circuit entier</button>
+              <button type="button" id="grid" disabled title="Afficher les voitures sur la grille de départ">Grille de départ</button>
+              <button type="button" id="flyover" disabled aria-pressed="false" title="Survoler automatiquement le circuit">Survol</button>
+              <button type="button" id="weather" class="weather-button" disabled aria-pressed="false" aria-label="Activer la pluie et la piste mouillée">Météo · Sec</button>
+              <button type="button" id="camera-mode" class="camera-button" aria-keyshortcuts="C" hidden disabled>Caméra · Poursuite</button>
+            </div>
+          </div>
+          </div>
+        </div>
+      </footer>
+    </main>
+  </body>
+</html>
