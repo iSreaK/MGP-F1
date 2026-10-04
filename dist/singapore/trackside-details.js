@@ -36,41 +36,71 @@ export function addSingaporeTrackside(THREE, scene, curve, frames, landmarks, op
   const pitExit = signedStation(sourceFractions[landmarks?.pitStraight?.exitIndex] ?? .08);
   const turnU = number => sourceFractions[landmarks?.turns?.[`T${number}`]?.index] ?? null;
 
-  const positions = [];
-  const barrierColors = [];
-  const stepMetres = 4.2;
-  const count = Math.ceil(length / stepMetres);
+  // A row of rotated 4.2 m boxes made the wall step in and out around every
+  // corner. Build one continuous, colour-batched wall against the same frames
+  // as the road instead. Both edges of every panel share their next endpoint.
+  const wallVertices = [];
+  const wallNormals = [];
+  const wallColors = [];
+  const wallIndices = [];
   const color = new THREE.Color();
-  for (let i = 0; i < count; i++) {
-    const u = i / count;
-    const frame = frameAt(u);
+  let barrierCount = 0;
+  const wallBottom = trackY - .08;
+  const wallTop = trackY + 1.04;
+  for (let i = 0; i < frames.length; i++) {
+    const u = i / frames.length;
+    const a = frames[i];
+    const b = frames[(i + 1) % frames.length];
     const station = signedStation(u);
     for (const side of [-1, 1]) {
       // The left-hand pit entry and exit are open. The pit module builds its
       // own divider where the pit lane runs parallel with the main straight.
       if (side < 0 && station > pitEntry - 7 && station < pitExit + 7) continue;
-      positions.push({ frame, side, i });
+      const panel = Math.floor(u * length / 4.2);
+      const highlighted = panel % 19 === 0 || panel % 19 === 1;
+      color.setHex(highlighted ? 0xa32c32 : (panel % 7 === 0 ? 0xc0c4c3 : 0x9ba3a8));
+      const inner = side * (halfWidth + 1.49);
+      const outer = side * (halfWidth + 2.21);
+      const corner = (frame, lateral, y) => [
+        frame.point.x + frame.across.x * lateral,
+        y,
+        frame.point.z + frame.across.z * lateral,
+      ];
+      const faces = [
+        [[corner(a, inner, wallBottom), corner(a, inner, wallTop),
+          corner(b, inner, wallBottom), corner(b, inner, wallTop)],
+        [a.across.clone().multiplyScalar(-side), b.across.clone().multiplyScalar(-side)]],
+        [[corner(a, outer, wallBottom), corner(a, outer, wallTop),
+          corner(b, outer, wallBottom), corner(b, outer, wallTop)],
+        [a.across.clone().multiplyScalar(side), b.across.clone().multiplyScalar(side)]],
+        [[corner(a, inner, wallTop), corner(a, outer, wallTop),
+          corner(b, inner, wallTop), corner(b, outer, wallTop)],
+        [up, up]],
+      ];
+      for (const [face, normals] of faces) {
+        const first = wallVertices.length / 3;
+        for (let vertexIndex = 0; vertexIndex < face.length; vertexIndex++) {
+          const vertex = face[vertexIndex];
+          const normal = normals[vertexIndex < 2 ? 0 : 1];
+          wallVertices.push(...vertex);
+          wallNormals.push(normal.x, normal.y, normal.z);
+          wallColors.push(color.r, color.g, color.b);
+        }
+        wallIndices.push(first, first + 2, first + 1,
+          first + 1, first + 2, first + 3);
+      }
+      barrierCount++;
     }
   }
-  const barrier = new THREE.InstancedMesh(
-    new THREE.BoxGeometry(.72, 1.12, stepMetres + .06),
+  const wallGeometry = new THREE.BufferGeometry();
+  wallGeometry.setAttribute('position', new THREE.Float32BufferAttribute(wallVertices, 3));
+  wallGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(wallNormals, 3));
+  wallGeometry.setAttribute('color', new THREE.Float32BufferAttribute(wallColors, 3));
+  wallGeometry.setIndex(wallIndices);
+  const barrier = new THREE.Mesh(wallGeometry,
     new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .9,
-      metalness: .015, vertexColors: true }), positions.length);
+      metalness: .015, vertexColors: true, side: THREE.DoubleSide }));
   barrier.name = 'Close concrete street-circuit walls';
-  for (let i = 0; i < positions.length; i++) {
-    const { frame, side, i: segment } = positions[i];
-    helper.position.copy(frame.point).addScaledVector(frame.across, side * (halfWidth + 1.85));
-    helper.position.y = trackY + .48;
-    helper.quaternion.copy(frame.quaternion);
-    helper.scale.set(1, 1, 1);
-    helper.updateMatrix();
-    barrier.setMatrixAt(i, helper.matrix);
-    const highlighted = segment % 19 === 0 || segment % 19 === 1;
-    color.setHex(highlighted ? 0xa32c32 : (segment % 7 === 0 ? 0xc0c4c3 : 0x9ba3a8));
-    barrier.setColorAt(i, color);
-  }
-  barrier.instanceMatrix.needsUpdate = true;
-  barrier.instanceColor.needsUpdate = true;
   barrier.frustumCulled = false;
   barrier.receiveShadow = true;
   group.add(barrier);
@@ -84,21 +114,27 @@ export function addSingaporeTrackside(THREE, scene, curve, frames, landmarks, op
   const fenceCount = Math.ceil(length / fenceStep);
   for (let i = 0; i < fenceCount; i++) {
     const frame = frameAt(i / fenceCount);
+    const middle = frameAt((i + .5) / fenceCount);
     const next = frameAt((i + 1) / fenceCount);
     const station = signedStation(i / fenceCount);
     for (const side of [-1, 1]) {
       if (side < 0 && station > pitEntry - 7 && station < pitExit + 7) continue;
       const lateral = side * (halfWidth + 2.58);
       const a = frame.point.clone().addScaledVector(frame.across, lateral);
+      const m = middle.point.clone().addScaledVector(middle.across, lateral);
       const b = next.point.clone().addScaledVector(next.across, lateral);
-      a.y = b.y = trackY;
+      a.y = m.y = b.y = trackY;
       fenceStations.push({ point: a, quaternion: frame.quaternion });
-      for (const height of [1.18, 1.94, 2.70, 3.46, 4.22]) {
-        fenceVertices.push(a.x, a.y + height, a.z, b.x, b.y + height, b.z);
-      }
-      for (let k = 0; k < 3; k++) {
-        const from = 1.23 + k * 1.0;
-        fenceVertices.push(a.x, a.y + from, a.z, b.x, b.y + from + .76, b.z);
+      for (const [start, end] of [[a, m], [m, b]]) {
+        for (const height of [1.18, 1.94, 2.70, 3.46, 4.22]) {
+          fenceVertices.push(start.x, start.y + height, start.z,
+            end.x, end.y + height, end.z);
+        }
+        for (let k = 0; k < 3; k++) {
+          const from = 1.23 + k * 1.0;
+          fenceVertices.push(start.x, start.y + from, start.z,
+            end.x, end.y + from + .76, end.z);
+        }
       }
     }
   }
@@ -253,6 +289,6 @@ export function addSingaporeTrackside(THREE, scene, curve, frames, landmarks, op
     }
   }
 
-  return { group, barrierCount: positions.length, fencePostCount: fenceStations.length,
+  return { group, barrierCount, fencePostCount: fenceStations.length,
     floodlightCount: mastCount };
 }

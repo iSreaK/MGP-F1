@@ -51,7 +51,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--rendered", action="store_true",
-        help="compare the calibrated straight-smoothed 3D centreline",
+        help="compare the calibrated fair-fitted 3D centreline",
     )
     args = parser.parse_args()
     raw = json.loads(LOCATION.read_text(encoding="utf-8"))

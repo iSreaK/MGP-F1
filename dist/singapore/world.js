@@ -8,7 +8,9 @@ import { prepareSingaporeCurve } from './geometry-smoothing.js';
 // does not contain a surveyed carriageway width or street elevations, so those
 // dimensions remain visual approximations. Everything here is in metres.
 const TRACK_Y = .36;
-const SAMPLE_COUNT = 2048;
+// About 1.6 m between vertices. The original 2.4 m chords visibly faceted
+// the white edge lines and kerbs in the tight street-circuit corners.
+const SAMPLE_COUNT = 3072;
 
 function textureFromPixels(THREE, size, paint) {
   const canvas = document.createElement('canvas');
@@ -126,9 +128,10 @@ export function createSingaporeWorld(THREE, scene) {
   const { fractions: sourceFractions } = distanceFractions(sourcePoints);
   const samples = Array.from({ length: SAMPLE_COUNT }, (_, i) => curve.getPointAt(i / SAMPLE_COUNT));
   const frames = samples.map((point, i) => {
-    const before = samples[(i - 1 + SAMPLE_COUNT) % SAMPLE_COUNT];
-    const after = samples[(i + 1) % SAMPLE_COUNT];
-    const forward = after.clone().sub(before).setY(0).normalize();
+    // Use the curve derivative, as the replay cars and trackside props do.
+    // A chord through neighbouring samples diverged by up to 6.8 degrees at
+    // the sharpest corners, amplifying bends in offset edge lines and walls.
+    const forward = curve.getTangentAt(i / SAMPLE_COUNT).setY(0).normalize();
     return { point, forward, across: new THREE.Vector3(forward.z, 0, -forward.x) };
   });
   const distances = [0];
