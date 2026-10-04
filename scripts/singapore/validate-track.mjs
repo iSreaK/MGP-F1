@@ -13,6 +13,24 @@ let toGrid = 0;
 for (let i = 0; i < LANDMARKS.gridIndex; i++) toGrid += points[i].distanceTo(points[i + 1]);
 const spline = curve.getLength();
 const render = prepareSingaporeCurve(THREE, TRACK_POINTS, TRACK_LENGTH_METERS);
+const straight = LANDMARKS.pitStraight;
+const straightIndices = [
+  ...Array.from({ length: points.length - straight.fromIndex }, (_, i) => straight.fromIndex + i),
+  ...Array.from({ length: straight.toIndex + 1 }, (_, i) => i),
+];
+const straightStart = points[straight.fromIndex];
+const straightEnd = points[straight.toIndex];
+const straightVector = straightEnd.clone().sub(straightStart);
+const straightLength = straightVector.length();
+const lateralOffset = (point, start, vector) =>
+  Math.abs((point.x - start.x) * vector.z - (point.z - start.z) * vector.x) / Math.hypot(vector.x, vector.z);
+const maxStraightWobble = Math.max(...straightIndices.map(i =>
+  lateralOffset(points[i], straightStart, straightVector)));
+const renderedStraight = straightIndices.slice(4, -4);
+const renderedStart = render.sourcePoints[renderedStraight[0]];
+const renderedVector = render.sourcePoints[renderedStraight.at(-1)].clone().sub(renderedStart);
+const maxRenderedWobble = Math.max(...renderedStraight.map(i =>
+  lateralOffset(render.sourcePoints[i], renderedStart, renderedVector)));
 const apexMovement = Math.max(...Array.from({ length: 19 }, (_, i) => {
   const index = LANDMARKS.turns[`T${i + 1}`].index;
   return Math.hypot(render.smoothed[index][0] - TRACK_POINTS[index][0],
@@ -23,8 +41,11 @@ assert.ok(Math.abs(spline - TRACK_LENGTH_METERS) < 5, 'rendered spline within 5 
 assert.ok(Math.abs(render.renderedLength - TRACK_LENGTH_METERS) < .01,
   'rendered circuit is calibrated to the FIA lap');
 assert.ok(apexMovement < .4, 'straight-only smoothing preserves all 19 apexes');
+assert.ok(straightLength > 400 && straightLength < 425, 'start/finish anchor spacing is plausible');
+assert.ok(maxStraightWobble < .005, 'FIA start/finish straight has no raster wobble');
+assert.ok(maxRenderedWobble < .025, 'rendered start/finish straight remains straight');
 assert.equal(LANDMARKS.controlLineIndex, 0);
-assert.ok(Math.abs(toGrid - LANDMARKS.startLineOffsetMeters) < 2.5, 'start line is about 137 m after control');
+assert.ok(Math.abs(toGrid - LANDMARKS.startLineOffsetMeters) < .02, 'start line is 137 m after control');
 assert.ok(points[1].x < points[0].x && points[1].z > points[0].z, 'race direction heads northwest toward T1');
 let previousIndex = LANDMARKS.gridIndex;
 for (let number = 1; number <= 19; number++) {
@@ -40,6 +61,8 @@ console.log('Singapore track geometry OK:', {
   renderedSpline: Number(spline.toFixed(3)),
   finalRender: Number(render.renderedLength.toFixed(3)),
   maxApexMovement: Number(apexMovement.toFixed(3)),
+  maxStraightWobble: Number(maxStraightWobble.toFixed(4)),
+  maxRenderedWobble: Number(maxRenderedWobble.toFixed(4)),
   gridOffset: Number(toGrid.toFixed(3)),
   orderedTurns: 19,
   raceHeading: 'northwest toward T1',

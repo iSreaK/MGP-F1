@@ -24,6 +24,8 @@ FIA_URL = (
 )
 TRACK_LENGTH_METERS = 4927.0
 START_LINE_OFFSET_METERS = 137.0
+PIT_STRAIGHT_FROM_INDEX = 973
+PIT_STRAIGHT_TO_INDEX = 81
 PDF_PAGE_INDEX = 3
 RASTER_SCALE = 3
 SAMPLE_STEP_METERS = 5.0
@@ -176,6 +178,70 @@ def trace_cycle(line: np.ndarray, origin: tuple[int, int]) -> list[tuple[int, in
     return cycle
 
 
+def straighten_start_finish(
+    track: list[list[float]], from_index: int, to_index: int
+) -> list[list[float]]:
+    """Remove raster jitter only from the 415 m start/finish straight.
+
+    The FIA map represents this stretch as a straight road, but the medial
+    axis of its triangulated road band meanders by about one metre. Project
+    interior points onto the line between two anchors outside T19 and T1.
+    Keeping each point's longitudinal projection preserves local spacing,
+    while leaving every corner apex untouched.
+    """
+    count = len(track)
+    indices = list(range(from_index, count)) + list(range(to_index + 1))
+    ax, az = track[from_index]
+    bx, bz = track[to_index]
+    dx, dz = bx - ax, bz - az
+    length_squared = dx * dx + dz * dz
+    if length_squared < 100 * 100:
+        raise ValueError("The start/finish anchors are unexpectedly close")
+    result = [point[:] for point in track]
+    for index in indices[1:-1]:
+        x, z = track[index]
+        along = ((x - ax) * dx + (z - az) * dz) / length_squared
+        result[index] = [ax + along * dx, az + along * dz]
+    return result
+
+
+def align_grid_offset(track: list[list[float]], grid_index: int) -> list[list[float]]:
+    """Place the actual start boxes 137 m after the control line.
+
+    Raster-path sampling measures the extra 137 m on a zigzag skeleton,
+    leaving the rendered grid about a metre short. Re-time only collinear
+    points between control line and straight endpoint. Their endpoints and
+    total lap length stay fixed.
+    """
+    result = [point[:] for point in track]
+    ox, oz = track[0]
+    ex, ez = track[PIT_STRAIGHT_TO_INDEX]
+    dx, dz = ex - ox, ez - oz
+    straight_length = math.hypot(dx, dz)
+    ux, uz = dx / straight_length, dz / straight_length
+
+    def along(index: int) -> float:
+        x, z = track[index]
+        return (x - ox) * ux + (z - oz) * uz
+
+    old_grid_offset = along(grid_index)
+    if not (0 < old_grid_offset < straight_length
+            and 0 < START_LINE_OFFSET_METERS < straight_length):
+        raise ValueError("Grid offset is outside the start/finish straight")
+    for index in range(1, PIT_STRAIGHT_TO_INDEX):
+        distance = along(index)
+        if index <= grid_index:
+            adjusted = distance * START_LINE_OFFSET_METERS / old_grid_offset
+        else:
+            adjusted = START_LINE_OFFSET_METERS + (
+                distance - old_grid_offset
+            ) * (straight_length - START_LINE_OFFSET_METERS) / (
+                straight_length - old_grid_offset
+            )
+        result[index] = [ox + adjusted * ux, oz + adjusted * uz]
+    return result
+
+
 def build_track(
     cycle: list[tuple[int, int]], origin: tuple[int, int]
 ) -> tuple[list[list[float]], dict[int, tuple[int, float]], int, float, float]:
@@ -226,7 +292,21 @@ def build_track(
     # clean centreline sampled every 5m is a little shorter, so scale the
     # actual exported polyline, not the raw pixel walk, to exactly 4,927m.
     correction = TRACK_LENGTH_METERS / sampled_length
-    track = [[round(x * correction, 3), round(z * correction, 3)] for x, z in track]
+    track = [[x * correction, z * correction] for x, z in track]
+    track = straighten_start_finish(
+        track, PIT_STRAIGHT_FROM_INDEX, PIT_STRAIGHT_TO_INDEX
+    )
+    # Straightening removes approximately 0.8 m of skeleton-derived zigzag.
+    # Recalibrate the entire closed line to preserve the FIA's exact lap.
+    final_length = sum(
+        math.dist(track[i], track[(i + 1) % len(track)])
+        for i in range(len(track))
+    )
+    correction = TRACK_LENGTH_METERS / final_length
+    track = [[x * correction, z * correction] for x, z in track]
+    grid_sample_index = samples.index(START_LINE_OFFSET_METERS)
+    track = align_grid_offset(track, grid_sample_index)
+    track = [[round(x, 4), round(z, 4)] for x, z in track]
     track.append(track[0][:])
     # The 137 m start-line offset and turn distances refer to the *exported*
     # geometry. Resampling removes pixel stair steps, so raw-skeleton distances
@@ -272,8 +352,8 @@ def write_track_data(
         "gridIndex": grid_index,
         "startLineOffsetMeters": START_LINE_OFFSET_METERS,
         "pitStraight": {
-            "fromIndex": 973,
-            "toIndex": 81,
+            "fromIndex": PIT_STRAIGHT_FROM_INDEX,
+            "toIndex": PIT_STRAIGHT_TO_INDEX,
             "pitLaneSide": "west / intérieur du circuit",
             "entryIndex": 925,
             "exitIndex": 84,
@@ -297,8 +377,9 @@ def write_track_data(
         "// Marina Bay Street Circuit, 2025 Singapore GP.\n"
         "// Source: FIA 2025 Singapore GP Doc 7, Circuit Map (page 4 of PDF):\n"
         f"// {FIA_URL}\n"
-        "// The FIA PDF vector track band was skeletonized and resampled; exported\n"
-        "// polyline is calibrated to the FIA's 4,927 m centreline length.\n"
+        "// The FIA PDF vector track band was skeletonized and resampled. Its\n"
+        "// start/finish straight is rectified to remove raster jitter; the\n"
+        "// centreline is calibrated to the FIA's 4,927 m lap length.\n"
         "// [x,z] are metre coordinates, x right / z up on the FIA diagram.\n"
         "// This map is not georeferenced. Lateral width, pit lane and apex markers\n"
         "// remain estimates; the official map is not a survey of kerbs or barriers.\n"

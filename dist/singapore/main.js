@@ -815,9 +815,9 @@ if (renderer) {
     const at = world.gridPoint.clone();
     const dir = world.gridTangent.clone().normalize();
     const side = new THREE.Vector3(dir.z, 0, -dir.x);
-    const position = at.clone().addScaledVector(dir, -50).addScaledVector(side, -9);
-    position.y = at.y + 11;
-    const target = at.clone().addScaledVector(dir, -8).addScaledVector(side, -2);
+    const position = at.clone().addScaledVector(dir, -60).addScaledVector(side, 8);
+    position.y = at.y + 17;
+    const target = at.clone().addScaledVector(dir, -8);
     target.y = at.y + 2;
     moveCamera(position, target, 1100);
   });
