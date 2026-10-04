@@ -52,6 +52,11 @@
         </div>
       </section>
 
+      <div class="race-flag-alert" id="race-flag-alert" role="status" aria-live="assertive" aria-atomic="true" hidden>
+        <strong class="race-flag-title"></strong>
+        <span class="race-flag-detail"></span>
+      </div>
+
       <section class="replay-panel" id="replay-panel" tabindex="-1" aria-label="Replay du Grand Prix d'Italie 2026" hidden>
         <div class="replay-head">
           <div>
@@ -61,14 +66,13 @@
           <div class="replay-head-actions"><span class="replay-badge">VOITURES EN CHARGEMENT</span><button type="button" id="replay-panel-toggle" class="replay-panel-toggle" aria-expanded="false" aria-label="Ouvrir la régie">Régie</button></div>
         </div>
         <p class="replay-status" id="replay-status" role="status" aria-live="polite">Chargement des données de course…</p>
-        <p class="replay-guide">Lecture lance la course · le curseur choisit un moment · le classement change la voiture suivie.</p>
         <div class="replay-controls">
           <button type="button" id="replay-toggle" class="replay-toggle" aria-label="Lire le replay">▶ Lecture</button>
           <label for="replay-speed">Lecture</label>
           <select id="replay-speed" aria-label="Vitesse de lecture du replay">
-            <option value="1">×1</option>
+            <option value="1" selected>×1</option>
             <option value="4">×4</option>
-            <option value="20" selected>×20</option>
+            <option value="20">×20</option>
             <option value="60">×60</option>
           </select>
         </div>
@@ -78,17 +82,6 @@
           <output id="replay-clock" for="replay-timeline">00:00 / 00:00</output>
         </div>
         <input type="range" id="replay-timeline" min="0" max="1" value="0" step="any" aria-label="Avancer dans le replay" />
-        <div class="replay-driver-row">
-          <label for="replay-driver">SUIVRE</label>
-          <select id="replay-driver" aria-label="Voiture suivie par la caméra">
-            <option value="12">Antonelli · 12</option>
-            <option value="3">Verstappen · 3</option>
-            <option value="1">Norris · 1</option>
-            <option value="44">Hamilton · 44</option>
-            <option value="10">Gasly · 10</option>
-            <option value="5">Bortoleto · 5</option>
-          </select>
-        </div>
         <a class="replay-garage-link" id="replay-garage-link" href="../">Voir cette monoplace au garage →</a>
         <div class="replay-telemetry" aria-label="Télémétrie de la voiture suivie">
           <div><span>POSITION</span><strong id="replay-official-position">—</strong></div>
@@ -96,9 +89,8 @@
           <div><span>ACCÉL.</span><strong id="replay-throttle">—</strong></div>
           <div><span>FREIN</span><strong id="replay-brake">—</strong></div>
         </div>
-        <div class="replay-ranking-head"><h3>CLASSEMENT</h3><span>Position officielle · choisir une voiture à suivre</span></div>
+        <div class="replay-ranking-head"><h3>CLASSEMENT</h3></div>
         <ol class="replay-rankings" id="replay-rankings" aria-label="Classement officiel des voitures affichées"></ol>
-        <p class="replay-source">Temps, rangs et télémétrie issus d’<a href="https://openf1.org/docs/" target="_blank" rel="noopener noreferrer">OpenF1</a> (source non officielle). Les mesures invalides sont estimées à partir de tours valides du même pilote. Positions 3D recalées sur les passages de ligne ; trajectoires latérales et voie des stands approximatives.</p>
       </section>
 
       <div class="loading" id="loading" role="status" aria-live="polite">

@@ -7,6 +7,7 @@ import { carCatalog } from '../dist/car-catalog.js';
 
 const data = JSON.parse(readFileSync(new URL('../dist/monza/data/monza-2026-replay.json', import.meta.url), 'utf8'));
 const replay = createHistoricalReplay(data);
+assert.equal(replay.speed, 1, 'Le replay démarre à vitesse réelle');
 const start = replay.frame();
 const grid = [...carCatalog].sort((a, b) => a.gridPosition - b.gridPosition);
 // Official 2026 Italian Grand Prix starting order, including the two pit starters.

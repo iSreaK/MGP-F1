@@ -6,6 +6,7 @@ import { GRID_LANE_CENTER, GRID_SLOT_SPACING, PIT_START_LANE_CENTER } from './gr
 import { createTrackGapLookup } from './track-gap.js';
 import { createRaceController } from './race-motion.js';
 import { createHistoricalReplay, replayLapDistance } from './historical-replay.js';
+import { createReplayFlagTimeline } from './replay-flags.js';
 import { computeReplayPlacements, replayVisualDistance, replayPitOffset, rateLimitReplayOffset } from './replay-lanes.js';
 import { resolveEntitySpacing } from './entity-spacing.js';
 import { bindWheelSpin } from './wheel-spin.js';
@@ -24,14 +25,15 @@ const raceButton = document.querySelector('#race');
 const replayButton = document.querySelector('#replay');
 const replayPanel = document.querySelector('#replay-panel');
 const replayPanelToggle = document.querySelector('#replay-panel-toggle');
-const replayGuide = document.querySelector('.replay-guide');
 const replayToggle = document.querySelector('#replay-toggle');
 const replayTimeline = document.querySelector('#replay-timeline');
 const replayClock = document.querySelector('#replay-clock');
 const replaySpeed = document.querySelector('#replay-speed');
-const replayDriver = document.querySelector('#replay-driver');
 const replayRankings = document.querySelector('#replay-rankings');
 const replayStatus = document.querySelector('#replay-status');
+const raceFlagAlert = document.querySelector('#race-flag-alert');
+const raceFlagTitle = raceFlagAlert?.querySelector('.race-flag-title');
+const raceFlagDetail = raceFlagAlert?.querySelector('.race-flag-detail');
 const replaySkipPause = document.querySelector('#replay-skip-pause');
 const replayGear = document.querySelector('#replay-gear');
 const replayThrottle = document.querySelector('#replay-throttle');
@@ -178,6 +180,8 @@ if (renderer) {
   let lastTime = performance.now();
   document.addEventListener('visibilitychange', () => { lastTime = performance.now(); });
   let historicalReplay = null;
+  let replayFlagTimeline = null;
+  let lastReplayFlagKey = '';
   let replayDataPromise = null;
   let replayActive = false;
   let selectedReplayNumber = requestedReplayNumber;
@@ -241,11 +245,6 @@ if (renderer) {
     replayPanelToggle.setAttribute('aria-expanded', String(!compact));
     replayPanelToggle.setAttribute('aria-label', compact ? 'Ouvrir la régie' : 'Fermer la régie');
     replayPanelToggle.textContent = compact ? 'Régie' : 'Fermer';
-    if (replayGuide) replayGuide.textContent = compact
-      ? 'Ouvrez la régie pour contrôler le replay et choisir une voiture.'
-      : window.matchMedia('(max-width: 760px)').matches
-        ? 'Choisissez une voiture dans le classement. Fermer revient au circuit et aux commandes.'
-        : 'Lecture lance la course · le curseur choisit un moment · le classement change la voiture suivie.';
   }
 
   function replayCars() {
@@ -270,22 +269,14 @@ if (renderer) {
 
   function replayRaceStatus(timeSec, selected) {
     const data = historicalReplay.data;
-    if (replayPauseAt(timeSec)) return selected?.speedKph > 5
-      ? 'DRAPEAU ROUGE · Retour aux stands' : 'DRAPEAU ROUGE · Course interrompue';
     if (timeSec >= historicalReplay.durationSec) return 'ARRIVÉE · Replay terminé';
     const recentRetirement = Object.values(data.drivers).find(driver => driver.status === 'retired'
       && timeSec >= driver.finishSec && timeSec < driver.finishSec + 18);
     if (recentRetirement) return `ABANDON · ${replayNames[recentRetirement.number]}`;
-    if (selected?.retired) return `ABANDON · ${replayNames[selected.number]}`;
     const pit = data.drivers[selected.number]?.pit?.find(stop =>
       !stop.redFlagTransit && timeSec >= stop.tSec - stop.laneDurationSec && timeSec < stop.tSec + 5);
     if (pit) return `STANDS · ${replayNames[selected.number]} · voie approximative`;
     const eventTime = (message, after = -1) => data.events?.find(event => event.message === message && event.tSec > after)?.tSec;
-    const vscStart = eventTime('VSC DEPLOYED');
-    const vscEnd = eventTime('VSC ENDING', vscStart);
-    if (timeSec >= vscStart && timeSec < vscEnd) return 'VSC · Voiture de sécurité virtuelle';
-    const safetyCar = eventTime('SAFETY CAR DEPLOYED');
-    if (timeSec >= safetyCar && timeSec < data.session.pauses[0]?.startSec) return 'VOITURE DE SÉCURITÉ';
     const resume = eventTime('SESSION STARTED', 1);
     const extraLap = eventTime('EXTRA FORMATION LAP');
     const overtaking = eventTime('OVERTAKE ENABLED', resume);
@@ -294,7 +285,30 @@ if (renderer) {
         ? 'REPRISE · Tour de formation supplémentaire'
         : 'PROCÉDURE DE REPRISE';
     }
-    return historicalReplay.playing ? 'REPLAY EN COURS' : 'REPLAY EN PAUSE';
+    return null;
+  }
+
+  function updateReplayFlagAlert(timeSec) {
+    if (!raceFlagAlert || !replayFlagTimeline) return null;
+    const flag = replayFlagTimeline.at(timeSec);
+    const key = `${flag.kind}|${flag.detail}`;
+    if (key === lastReplayFlagKey) return flag;
+    lastReplayFlagKey = key;
+    raceFlagAlert.hidden = !flag.active;
+    raceFlagAlert.classList.toggle('is-yellow', flag.tone === 'yellow');
+    raceFlagAlert.classList.toggle('is-red', flag.tone === 'red');
+    raceFlagAlert.classList.toggle('is-chequered', flag.tone === 'chequered');
+    if (raceFlagTitle) raceFlagTitle.textContent = flag.label;
+    if (raceFlagDetail) raceFlagDetail.textContent = flag.detail;
+    return flag;
+  }
+
+  function replayFollowFallback(frame, previousNumber, includeFinished = false) {
+    const previousIndex = frame.cars.findIndex(car => car.number === previousNumber);
+    return frame.cars
+      .map((car, index) => ({ car, index }))
+      .filter(({ car }) => !car.retired && (includeFinished || !car.ended))
+      .sort((a, b) => Math.abs(a.index - previousIndex) - Math.abs(b.index - previousIndex) || a.index - b.index)[0]?.car;
   }
 
   function updateReplayControls(frame) {
@@ -307,7 +321,6 @@ if (renderer) {
     }
     if (replayClock) replayClock.textContent = `${formatReplayClock(frame.timeSec)} / ${formatReplayClock(historicalReplay.durationSec)}`;
     if (replaySpeed) replaySpeed.value = String(historicalReplay.speed);
-    if (replayDriver) replayDriver.value = String(selectedReplayNumber);
     if (replayGarageLink) {
       const garageEntry = carByNumber[selectedReplayNumber];
       replayGarageLink.href = `../?car=${encodeURIComponent(garageEntry.key)}`;
@@ -320,8 +333,15 @@ if (renderer) {
       replayToggle.setAttribute('aria-label', historicalReplay.playing ? 'Mettre le replay en pause' : 'Lire le replay');
     }
     const pause = replayPauseAt(frame.timeSec);
-    const status = replayRaceStatus(frame.timeSec, selected);
-    if (replayStatus && replayStatus.textContent !== status) replayStatus.textContent = status;
+    const flag = updateReplayFlagAlert(frame.timeSec);
+    const status = flag?.active
+      ? `${flag.label}${flag.detail ? ` · ${flag.detail}` : ''}`
+      : replayRaceStatus(frame.timeSec, selected);
+    if (replayStatus) {
+      replayStatus.hidden = !status;
+      if (status && replayStatus.textContent !== status) replayStatus.textContent = status;
+      replayStatus.dataset.flagTone = flag?.active ? flag.tone : '';
+    }
     if (replaySkipPause) replaySkipPause.hidden = !pause;
     const rankingKey = `${selectedReplayNumber}|${frame.cars.map(car => `${car.number}:${car.officialPosition}:${car.retired}`).join(',')}`;
     if (replayRankings && rankingKey !== lastReplayRankingKey) {
@@ -329,9 +349,15 @@ if (renderer) {
       const focusedNumber = replayRankings.contains(document.activeElement)
         ? document.activeElement.closest('[data-replay-number]')?.dataset.replayNumber : null;
       replayRankings.innerHTML = frame.cars.map(car =>
-        `<li class="${car.number === selectedReplayNumber ? 'is-followed' : ''}"><button type="button" data-replay-number="${car.number}" aria-current="${car.number === selectedReplayNumber}" aria-label="Suivre ${replayNames[car.number]}, ${car.retired ? 'abandon' : `position officielle ${car.officialPosition ?? 'inconnue'}`}"><span>P${car.officialPosition ?? car.selectedRank}</span><strong>${replayNames[car.number]}</strong><small>#${car.number} · ${car.retired ? 'ABANDON' : car.finished ? 'ARRIVÉE' : 'EN PISTE'}</small></button></li>`
+        `<li class="${[car.number === selectedReplayNumber ? 'is-followed' : '', car.retired ? 'is-retired' : ''].filter(Boolean).join(' ')}"><button type="button" data-replay-number="${car.number}" aria-current="${car.number === selectedReplayNumber}" aria-label="${car.retired ? `${replayNames[car.number]}, abandon` : `Suivre ${replayNames[car.number]}, position officielle ${car.officialPosition ?? 'inconnue'}`}" ${car.retired ? 'disabled' : ''}><span>P${car.officialPosition ?? car.selectedRank}</span><strong>${replayNames[car.number]}</strong><small>#${car.number} · ${car.retired ? 'ABANDON' : car.finished ? 'ARRIVÉE' : 'EN PISTE'}</small></button></li>`
       ).join('');
-      if (focusedNumber) replayRankings.querySelector(`[data-replay-number="${focusedNumber}"]`)?.focus({ preventScroll: true });
+      if (focusedNumber) {
+        const previousButton = replayRankings.querySelector(`[data-replay-number="${focusedNumber}"]`);
+        const focusTarget = previousButton?.disabled
+          ? replayRankings.querySelector(`[data-replay-number="${selectedReplayNumber}"]`)
+          : previousButton;
+        focusTarget?.focus({ preventScroll: true });
+      }
     }
     raceHudCode.textContent = `${replayNames[selected.number].toUpperCase()} / ${selected.number}`;
     raceSpeed.textContent = Math.round(selected.speedKph).toString();
@@ -356,8 +382,12 @@ if (renderer) {
   function placeReplayFrame(frame, snapCamera = false, snapPlacement = false, cameraDt = .05) {
     if (!historicalReplay || !trackGap) return;
     const selected = frame.byNumber[selectedReplayNumber];
-    if (selected?.ended && frame.timeSec > historicalReplay.data.drivers[selectedReplayNumber].finishSec + 1) {
-      const stillRacing = frame.cars.find(car => !car.ended);
+    if (selected?.retired) {
+      const replacement = replayFollowFallback(frame, selectedReplayNumber)
+        || replayFollowFallback(frame, selectedReplayNumber, true);
+      if (replacement) selectedReplayNumber = replacement.number;
+    } else if (selected?.ended && frame.timeSec > historicalReplay.data.drivers[selectedReplayNumber].finishSec + 1) {
+      const stillRacing = replayFollowFallback(frame, selectedReplayNumber);
       if (stillRacing) selectedReplayNumber = stillRacing.number;
     }
     // GPS/timing calibration aligns both restart grids. The small residual
@@ -423,6 +453,9 @@ if (renderer) {
   function exitReplay() {
     replayRequestId++;
     const focusWasInReplay = replayPanel?.contains(document.activeElement);
+    if (raceFlagAlert) raceFlagAlert.hidden = true;
+    replayFlagTimeline = null;
+    lastReplayFlagKey = '';
     if (!replayActive) {
       if (replayPanel) replayPanel.hidden = true;
       updateReplayAvailability();
@@ -485,15 +518,13 @@ if (renderer) {
       const replayData = await replayDataPromise;
       if (requestId !== replayRequestId) return;
       historicalReplay = createHistoricalReplay(replayData);
+      replayFlagTimeline = createReplayFlagTimeline(replayData);
+      lastReplayFlagKey = '';
       if (carCatalog.some(car => !replayData.drivers[car.number])) {
         throw new Error('La grille locale et les données de course ne correspondent pas.');
       }
-      if (replayDriver) replayDriver.innerHTML = carCatalog.map(car =>
-        `<option value="${car.number}">${car.shortName} · ${car.number}</option>`).join('');
       document.querySelector('.replay-badge').textContent = `${carCatalog.length} VOITURES`;
-      document.querySelector('.replay-ranking-head span').textContent = `Position officielle · choisir une voiture à suivre`;
       document.querySelector('.replay-rankings').setAttribute('aria-label', `Classement officiel des ${carCatalog.length} voitures affichées`);
-      document.querySelector('.replay-source').innerHTML = `Temps, rangs et télémétrie issus d’<a href="https://openf1.org/docs/" target="_blank" rel="noopener noreferrer">OpenF1</a> (source non officielle). ${carCatalog.length} voitures affichées ; mesures invalides estimées sur des tours valides du même pilote ; positions 3D recalées sur les passages de ligne. Trajectoires latérales et voie des stands approximatives.`;
       replayTotalLaps = Math.max(...historicalReplay.drivers.map(driver => driver.laps?.length || 0));
       replayActive = true;
       lastReplayRankingKey = '';
@@ -501,7 +532,7 @@ if (renderer) {
       replayLateralOffsets.clear();
       replayEntityPositions.clear();
       selectedReplayNumber = requestedReplayNumber;
-      historicalReplay.setSpeed(Number(replaySpeed?.value) || 20);
+      historicalReplay.setSpeed(Number(replaySpeed?.value) || 1);
       historicalReplay.seek(0);
       savedWetModeForReplay = wetMode;
       if (wetMode) weatherButton?.click();
@@ -528,9 +559,13 @@ if (renderer) {
       if (requestId !== replayRequestId) return;
       replayDataPromise = null;
       historicalReplay = null;
+      replayFlagTimeline = null;
       console.error('Données du replay indisponibles.', error);
       if (replayPanel) replayPanel.hidden = false;
-      if (replayStatus) replayStatus.textContent = 'Données du replay indisponibles en local.';
+      if (replayStatus) {
+        replayStatus.hidden = false;
+        replayStatus.textContent = 'Données du replay indisponibles en local.';
+      }
     } finally {
       updateReplayAvailability();
     }
@@ -857,19 +892,12 @@ if (renderer) {
     pauseReplay();
     placeReplayFrame(historicalReplay.seek(requestedTime), true, true);
   });
-  replayDriver?.addEventListener('change', () => {
-    if (!replayActive || !historicalReplay) return;
-    selectedReplayNumber = Number(replayDriver.value);
-    placeReplayFrame(historicalReplay.frame(), true);
-    if (window.matchMedia('(max-width: 760px)').matches) {
-      setReplayPanelCompact(true);
-      replayPanelToggle.focus({ preventScroll: true });
-    }
-  });
   replayRankings?.addEventListener('click', event => {
     const button = event.target.closest('[data-replay-number]');
     if (!button || !replayActive || !historicalReplay) return;
-    selectedReplayNumber = Number(button.dataset.replayNumber);
+    const number = Number(button.dataset.replayNumber);
+    if (button.disabled || historicalReplay.frame().byNumber[number]?.retired) return;
+    selectedReplayNumber = number;
     placeReplayFrame(historicalReplay.frame(), true);
     if (window.matchMedia('(max-width: 760px)').matches) {
       setReplayPanelCompact(true);

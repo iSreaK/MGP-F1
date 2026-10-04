@@ -70,7 +70,7 @@ export function createHistoricalReplay(data) {
     return { ...driver, number: Number(number) };
   });
   let timeSec = 0;
-  let speed = 20;
+  let speed = 1;
   let playing = false;
 
   function frame(at = timeSec) {

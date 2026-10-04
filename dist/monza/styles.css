@@ -221,6 +221,36 @@ h1 span { color: #ff5851; font-weight: 700; }
 .race-section span { flex: 0 0 auto; color: #f15c56; font-size: 9px; font-weight: 850; letter-spacing: .08em; }
 .race-section strong { min-width: 0; font-weight: 720; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.race-flag-alert {
+  position: absolute;
+  z-index: 6;
+  top: 95px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 24px));
+  min-height: 46px;
+  padding: 9px 13px;
+  border: 2px solid currentColor;
+  border-radius: 5px;
+  background: #162126;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .38);
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+.race-flag-alert[hidden] { display: none; }
+.race-flag-alert::before { content: ""; flex: 0 0 16px; width: 16px; height: 16px; background: currentColor; clip-path: polygon(0 0, 90% 0, 90% 75%, 0 75%); }
+.race-flag-title { flex: 0 0 auto; font-size: 12px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.race-flag-detail { min-width: 0; font-size: 11px; font-weight: 750; line-height: 1.25; }
+.race-flag-alert.is-yellow { border-color: #ffe57b; background: #ffd335; box-shadow: 0 12px 30px rgba(0, 0, 0, .38), 0 0 26px rgba(255, 215, 63, .38); color: #172025; }
+.race-flag-alert.is-red { border-color: #ffc8c6; background: #d92c2d; box-shadow: 0 12px 30px rgba(0, 0, 0, .42), 0 0 30px rgba(237, 43, 47, .48); color: #fff; }
+.race-flag-alert.is-chequered { border-color: #f4f5ef; background: #172126; color: #f4f5ef; }
+.race-flag-alert.is-chequered::before { clip-path: none; background: conic-gradient(#f4f5ef 25%, #172126 0 50%, #f4f5ef 0 75%, #172126 0) 0 0 / 8px 8px; }
+
 .replay-panel {
   top: 132px;
   right: clamp(20px, 3.8vw, 58px);
@@ -236,7 +266,7 @@ h1 span { color: #ff5851; font-weight: 700; }
   backdrop-filter: blur(18px);
   scrollbar-color: rgba(167, 223, 221, .55) transparent;
 }
-.replay-head, .replay-controls, .replay-timeline-head, .replay-driver-row, .replay-ranking-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.replay-head, .replay-controls, .replay-timeline-head, .replay-ranking-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .replay-head { align-items: flex-start; }
 .replay-head-actions { display: flex; align-items: center; gap: 5px; }
 .replay-panel .replay-panel-toggle { min-height: 34px; padding: 5px 8px; font-size: 11px; line-height: 1.2; white-space: nowrap; }
@@ -245,12 +275,19 @@ h1 span { color: #ff5851; font-weight: 700; }
 .replay-head h2 span { color: #8cddd7; }
 .replay-badge { padding: 6px 8px; border: 1px solid rgba(132, 223, 217, .44); border-radius: 3px; color: #d8f5f2; font-size: 10px; font-weight: 850; letter-spacing: .04em; white-space: nowrap; }
 .replay-status { min-height: 18px; margin: 14px 0 9px; color: #edf6f4; font-size: 12px; font-weight: 720; line-height: 1.4; }
-.replay-guide { margin: 0 0 16px; color: #c0d5d2; font-size: 12px; line-height: 1.45; }
+.replay-status[hidden] { display: none; }
+.replay-status[data-flag-tone="yellow"],
+.replay-status[data-flag-tone="red"],
+.replay-status[data-flag-tone="chequered"] { padding: 9px 11px; border-radius: 4px; font-weight: 900; letter-spacing: .035em; }
+.replay-status[data-flag-tone="yellow"] { background: #ffd335; color: #172025; }
+.replay-status[data-flag-tone="red"] { background: #d92c2d; color: #fff; }
+.replay-status[data-flag-tone="chequered"] { border: 1px solid #f4f5ef; color: #f4f5ef; }
+.atlas:has(#replay-panel:not([hidden]):not(.is-compact)) .race-flag-alert { display: none; }
 .replay-live-speed { display: flex; align-items: baseline; gap: 8px; margin: -3px 0 12px; color: #b9d9d5; }
 .replay-live-speed strong { color: #fff; font: italic 900 36px/1 "Arial Narrow", Impact, sans-serif; font-variant-numeric: tabular-nums; }
 .replay-live-speed span { font-size: 10px; font-weight: 780; letter-spacing: .04em; }
 .replay-controls { padding-bottom: 15px; border-bottom: 1px solid rgba(255, 255, 255, .17); }
-.replay-controls label, .replay-driver-row label, .replay-timeline-head label { color: #d0e2df; font-size: 11px; font-weight: 800; letter-spacing: .05em; }
+.replay-controls label, .replay-timeline-head label { color: #d0e2df; font-size: 11px; font-weight: 800; letter-spacing: .05em; }
 .replay-panel button, .replay-panel select { min-height: 36px; border: 1px solid rgba(164, 219, 216, .32); border-radius: 4px; background: rgba(17, 44, 47, .8); color: #f2f9f8; font: inherit; font-size: 12px; font-weight: 760; cursor: pointer; }
 .replay-panel button:hover:not(:disabled), .replay-panel select:hover { border-color: rgba(164, 234, 230, .8); background: rgba(26, 62, 65, .93); }
 .replay-panel button:disabled, .replay-panel select:disabled { opacity: .5; cursor: default; }
@@ -261,8 +298,6 @@ h1 span { color: #ff5851; font-weight: 700; }
 .replay-timeline-head { margin-top: 17px; }
 .replay-timeline-head output { color: #e7f4f2; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
 #replay-timeline { width: 100%; height: 22px; margin: 7px 0 14px; accent-color: #89dfd9; cursor: pointer; }
-.replay-driver-row { padding: 13px 0; border-top: 1px solid rgba(255, 255, 255, .17); border-bottom: 1px solid rgba(255, 255, 255, .17); }
-#replay-driver { max-width: 74%; padding: 7px; font-size: 13px; }
 .replay-garage-link { display: inline-flex; margin: 8px 0 2px; color: #bcefeb; font-size: 12px; font-weight: 760; text-decoration-color: rgba(188, 239, 235, .55); text-underline-offset: 3px; }
 .replay-garage-link:hover, .replay-garage-link:focus-visible { color: #fff; }
 .replay-telemetry { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-top: 13px; }
@@ -271,7 +306,6 @@ h1 span { color: #ff5851; font-weight: 700; }
 .replay-telemetry strong { display: block; margin-top: 3px; color: #f1faf8; font-size: 16px; font-weight: 820; font-variant-numeric: tabular-nums; }
 .replay-ranking-head { margin: 16px 0 9px; align-items: baseline; }
 .replay-ranking-head h3 { margin: 0; color: #f2f6f5; font-size: 12px; font-weight: 850; letter-spacing: .08em; }
-.replay-ranking-head span { color: #bfd0ce; font-size: 10px; line-height: 1.3; text-align: right; }
 .replay-rankings { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .replay-rankings li { padding: 7px 9px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 3px; background: rgba(255, 255, 255, .045); color: #eaf2f0; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.35; }
 .replay-rankings li.is-followed { border-color: rgba(137, 223, 217, .6); background: rgba(58, 120, 117, .24); }
@@ -280,19 +314,19 @@ h1 span { color: #ff5851; font-weight: 700; }
 .replay-rankings button span { color: #8ddbd5; font-weight: 900; }
 .replay-rankings button strong { font-size: 12px; }
 .replay-rankings button small { color: #d0e0dd; font-size: 10px; white-space: nowrap; }
+.replay-rankings li.is-retired { border-color: rgba(183, 194, 194, .18); background: rgba(106, 115, 117, .13); }
+.replay-rankings li.is-retired button:disabled { opacity: 1; color: #9aa5a6; cursor: not-allowed; }
+.replay-rankings li.is-retired button span,
+.replay-rankings li.is-retired button strong { color: #9aa5a6; }
+.replay-rankings li.is-retired button small { color: #d2a8a7; font-weight: 850; }
 .atlas:has(#replay-panel:not([hidden])) .circuit-data,
 .atlas:has(#race-hud:not([hidden])) .circuit-data { display: none; }
 .atlas:has(#replay-panel:not([hidden])) .race-hud { left: clamp(20px, 3.8vw, 58px); right: auto; }
-.replay-source { margin: 16px 0 0; color: #bfd0ce; font-size: 11px; line-height: 1.5; }
-.replay-source a { color: #a9ebe5; text-decoration-color: rgba(169, 235, 229, .5); }
 .replay-panel.is-compact { width: min(335px, calc(100vw - 32px)); max-height: none; overflow: visible; }
-.replay-panel.is-compact .replay-driver-row,
 .replay-panel.is-compact .replay-garage-link,
 .replay-panel.is-compact .replay-telemetry,
 .replay-panel.is-compact .replay-ranking-head,
-.replay-panel.is-compact .replay-rankings,
-.replay-panel.is-compact .replay-source { display: none; }
-.replay-panel.is-compact .replay-guide { margin-bottom: 11px; }
+.replay-panel.is-compact .replay-rankings { display: none; }
 .replay-panel.is-compact .replay-live-speed { margin-bottom: 8px; }
 .replay-panel.is-compact #replay-timeline { margin-bottom: 0; }
 
@@ -534,7 +568,6 @@ h1 span { color: #ff5851; font-weight: 700; }
   .replay-panel.is-compact { overflow-x: hidden; }
   .atlas:has(#replay-panel:not([hidden])) .replay-panel.is-compact { max-height: calc(100svh - 250px); }
   .replay-panel.is-compact .replay-status { margin: 8px 0 7px; }
-  .replay-panel.is-compact .replay-guide { display: none; }
   .replay-panel.is-compact .replay-live-speed { margin: 0 0 8px; }
   .replay-panel.is-compact .replay-live-speed strong { font-size: 31px; }
   .replay-panel.is-compact .replay-controls { gap: 5px; padding-bottom: 9px; }
@@ -609,13 +642,9 @@ h1 span { color: #ff5851; font-weight: 700; }
 .replay-panel .replay-head h2 { font-style: normal; font-size: 25px; letter-spacing: -.04em; }
 .replay-panel .replay-badge { display: none; }
 .replay-panel .replay-status { margin: 9px 0 10px; }
-.replay-panel.is-compact .replay-guide { display: none; }
-.replay-panel.is-compact .replay-driver-row { display: flex; }
 .replay-panel.is-compact .replay-timeline-head { margin-top: 12px; }
 .replay-panel.is-compact #replay-timeline { margin-bottom: 5px; }
 .replay-panel.is-compact .replay-controls { padding-bottom: 9px; }
-.replay-panel.is-compact .replay-driver-row { padding: 9px 0 1px; border-bottom: 0; }
-.replay-panel.is-compact #replay-driver { max-width: 70%; }
 .atlas.is-session .toolbar { left: auto; padding-bottom: clamp(24px, 3vw, 40px); }
 .atlas.is-session .gesture-hint { display: none; }
 .compact-controls { display: flex; justify-content: flex-end; gap: 6px; }
@@ -682,9 +711,6 @@ h1 span { color: #ff5851; font-weight: 700; }
   .replay-panel.is-compact .replay-timeline-head label { display: none; }
   .replay-panel.is-compact .replay-timeline-head output { font-size: 10px; }
   .replay-panel.is-compact #replay-timeline { margin: 2px 0 3px; }
-  .replay-panel.is-compact .replay-driver-row { display: block; padding: 5px 0 0; }
-  .replay-panel.is-compact .replay-driver-row label { display: block; margin-bottom: 4px; font-size: 9px; }
-  .replay-panel.is-compact #replay-driver { max-width: none; width: 100%; min-height: 36px; font-size: 10px; }
   .atlas.is-session:has(#replay-panel:not([hidden])) .toolbar,
   .atlas.is-session .toolbar { right: 12px; bottom: 11px; width: auto; padding: 0; }
   .atlas.is-session .control-panel { width: auto; }
@@ -706,6 +732,15 @@ h1 span { color: #ff5851; font-weight: 700; }
   #atlas.is-session #replay-panel,
   #atlas.is-session #replay-panel.is-compact { max-height: calc(100svh - 132px); }
   .immersive-toggle { bottom: 59px; min-height: 34px; }
+}
+
+@media (max-width: 1080px) {
+  .race-flag-alert { top: auto; bottom: 94px; }
+}
+@media (max-width: 760px) {
+  .race-flag-alert { bottom: 62px; min-height: 40px; padding: 7px 10px; gap: 7px; }
+  .race-flag-alert::before { flex-basis: 13px; width: 13px; height: 13px; }
+  .race-flag-title, .race-flag-detail { font-size: 10px; }
 }
 
 /* The closed régie is only an entry point; its controls appear when opened. */
