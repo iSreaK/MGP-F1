@@ -137,27 +137,11 @@ export function createSingaporeWorld(THREE, scene) {
   const distances = [0];
   for (let i = 1; i < SAMPLE_COUNT; i++) distances.push(distances[i - 1] + samples[i - 1].distanceTo(samples[i]));
   const half = Math.max(4.5, Math.min(6.0, Number(TRACK_WIDTH_METERS || 10.5) / 2));
-  // The FIA diagram defines the centreline, not a surveyed kerb-to-kerb
-  // width. Keep the start/finish complex at its existing scene width and use
-  // only gradual, sub-metre visual changes elsewhere. At the widest point
-  // the fixed concrete-wall inner face still has over a metre of clearance.
-  const widthFeatures = [
-    [LANDMARKS.turns.T7.distanceMeters - 70, .30, 110],
-    [LANDMARKS.turns.T13.distanceMeters, -.25, 125],
-    [LANDMARKS.turns.T16.distanceMeters + 55, .22, 145],
-  ];
-  const roadHalfWidths = Float32Array.from({ length: SAMPLE_COUNT }, (_, index) => {
-    const metres = index / SAMPLE_COUNT * TRACK_LENGTH_METERS;
-    let width = half;
-    for (const [centre, change, spread] of widthFeatures) {
-      let delta = metres - centre;
-      if (delta > TRACK_LENGTH_METERS / 2) delta -= TRACK_LENGTH_METERS;
-      if (delta < -TRACK_LENGTH_METERS / 2) delta += TRACK_LENGTH_METERS;
-      width += change * Math.exp(-.5 * (delta / spread) ** 2);
-    }
-    return Math.max(half - .25, Math.min(half + .35, width));
-  });
-  const roadHalfWidthAt = u => roadHalfWidths[Math.round(u * SAMPLE_COUNT) % SAMPLE_COUNT];
+  // The FIA diagram gives a centreline but no surveyed width profile. The
+  // former Gaussian width changes bent the painted edge lines on long streets
+  // whose centreline was straight. Keep the same estimated 10 m road width
+  // through the lap until a reliable width survey is available.
+  const roadHalfWidthAt = () => half;
 
   const street = new THREE.MeshBasicMaterial({ color: 0x252b32, side: THREE.DoubleSide });
   const urbanGround = new THREE.Mesh(new THREE.PlaneGeometry(6500, 6500), street);

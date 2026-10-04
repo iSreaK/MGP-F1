@@ -229,12 +229,14 @@ export function addSingaporeGridDetails(THREE, scene, curve, polyline, landmarks
   instanceBoxes('Pit building dark fascia', [.48, .55, bayLength + .1],
     steel, bays, -halfWidth - 19.85, 10.0);
 
-  // Retaining wall between race road and pit fast lane. The merge taper at
-  // each end stays open, so a pit-bound car never has to cross solid concrete.
+  // Retaining wall between race road and pit fast lane. Keep its inner face
+  // aligned with the main street walls (6.49 m off the centreline). The old
+  // row sat 0.8 m farther into the racing side, visibly jutting out beside
+  // the T19 grandstand. The merge taper at each end stays open.
   const dividerStations = [];
   for (let s = entry + taper + 35; s < exit - taper - 35; s += 3.6) dividerStations.push(s);
-  instanceBoxes('Pit-lane separation concrete blocks', [.62, 1.03, 3.58],
-    wall, dividerStations, -halfWidth - 1.0, .54);
+  instanceBoxes('Pit-lane separation concrete blocks', [.72, 1.03, 3.58],
+    wall, dividerStations, -halfWidth - 1.85, .54);
 
   // Gantry, five start lights and illuminated scoring header.
   const gantry = new THREE.Group();

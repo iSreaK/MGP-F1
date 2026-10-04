@@ -31,6 +31,18 @@ const renderedStart = render.sourcePoints[renderedStraight[0]];
 const renderedVector = render.sourcePoints[renderedStraight.at(-1)].clone().sub(renderedStart);
 const maxRenderedWobble = Math.max(...renderedStraight.map(i =>
   lateralOffset(render.sourcePoints[i], renderedStart, renderedVector)));
+const otherStraightCores = [
+  [230, 295], [325, 365], [470, 515], [785, 855],
+];
+const otherStraightWobbles = otherStraightCores.map(([from, to]) => {
+  const start = render.sourcePoints[from];
+  const end = render.sourcePoints[to];
+  const vector = end.clone().sub(start);
+  return Math.max(...render.sourcePoints.slice(from, to + 1).map(point =>
+    lateralOffset(point, start, vector)));
+});
+const maxSourceDisplacement = Math.max(...render.smoothed.map(([x, z], i) =>
+  Math.hypot(x - TRACK_POINTS[i][0], z - TRACK_POINTS[i][1])));
 const metreSamples = Array.from({ length: TRACK_LENGTH_METERS }, (_, i) =>
   render.curve.getPointAt(i / TRACK_LENGTH_METERS));
 const renderCurvature = metreSamples.map((at, i) => {
@@ -72,6 +84,10 @@ assert.ok(Math.abs(render.renderedLength - TRACK_LENGTH_METERS) < .01,
 assert.ok(straightLength > 400 && straightLength < 425, 'start/finish anchor spacing is plausible');
 assert.ok(maxStraightWobble < .005, 'FIA start/finish straight has no raster wobble');
 assert.ok(maxRenderedWobble < .025, 'rendered start/finish straight remains straight');
+assert.ok(otherStraightWobbles.every(wobble => wobble < .025),
+  'the other long render straights remain collinear');
+assert.ok(maxSourceDisplacement < .9,
+  'straight fairing stays inside the existing one-metre map tolerance');
 assert.ok(maxCurvature < .11, 'rendered bends stay wider than the road edge');
 assert.ok(minEdgeForward > .2, 'both road edges advance without folding back');
 assert.ok(abruptBendSamples < 100, 'raster stair steps do not dominate the rendered bends');
@@ -83,6 +99,8 @@ let previousIndex = LANDMARKS.gridIndex;
 for (let number = 1; number <= 19; number++) {
   const turn = LANDMARKS.turns[`T${number}`];
   assert.ok(turn && turn.index > previousIndex, `T${number} advances in race order`);
+  assert.deepEqual(render.smoothed[turn.index], TRACK_POINTS[turn.index],
+    `T${number} anchor is unchanged by the straight fairing`);
   previousIndex = turn.index;
 }
 assert.ok(LANDMARKS.pitStraight.fromIndex > LANDMARKS.turns.T19.index);
@@ -94,6 +112,8 @@ console.log('Singapore track geometry OK:', {
   finalRender: Number(render.renderedLength.toFixed(3)),
   maxStraightWobble: Number(maxStraightWobble.toFixed(4)),
   maxRenderedWobble: Number(maxRenderedWobble.toFixed(4)),
+  otherStraightWobbles: otherStraightWobbles.map(value => Number(value.toFixed(4))),
+  maxSourceDisplacement: Number(maxSourceDisplacement.toFixed(3)),
   minRenderedBendRadius: Number((1 / maxCurvature).toFixed(2)),
   minRoadEdgeForward: Number(minEdgeForward.toFixed(3)),
   abruptBendSamples,

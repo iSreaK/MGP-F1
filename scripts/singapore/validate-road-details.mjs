@@ -55,9 +55,10 @@ for (let i = 0; i < samples; i++) {
 }
 const narrowest = Math.min(...widths);
 const widest = Math.max(...widths);
-assert.ok(narrowest >= 4.74 && widest <= 5.36,
-  'visual road width remains inside the intended narrow range');
-assert.ok(widest - narrowest > .35, 'road width visibly varies by section');
+assert.ok(Math.abs(narrowest - 5) < .005 && Math.abs(widest - 5) < .005,
+  'road stays at the estimated 10 m width until surveyed widths are available');
+assert.ok(widest - narrowest < .005,
+  'artificial width waves do not bend the painted lines on long straights');
 assert.ok(6.49 - widest > 1.1, 'widest road retains wall clearance');
 for (let i = 0; i < samples; i++) {
   const next = (i + 1) % samples;

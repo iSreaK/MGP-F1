@@ -10,7 +10,7 @@
 // Raw resampled length before final correction: 4393.296 m.
 
 export const TRACK_LENGTH_METERS = 4927;
-export const TRACK_WIDTH_METERS = 10; // visual estimate; width varies by corner
+export const TRACK_WIDTH_METERS = 10; // visual estimate; no local width survey
 export const TRACK_POINTS = [
   [601.1476,270.6303],
   [598.6346,274.25],

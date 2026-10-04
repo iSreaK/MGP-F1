@@ -477,6 +477,31 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
   // Six modest stands create sightline landmarks without implying that every
   // stretch of the street circuit is surrounded by permanent spectator seats.
   const stands = [];
+  // Each stand is a temporary scaffold, rather than five floating rows of
+  // seats. One instanced draw call per stand keeps the uprights and bracing
+  // visible from track level without multiplying the scene's draw calls.
+  // A little wider and lighter than scale scaffold tubing: from a moving
+  // camera tens of metres away, true-size tubes disappear into the night.
+  const scaffoldSection = new THREE.BoxGeometry(.5, 1, .5);
+  const scaffoldMetal = new THREE.MeshStandardMaterial({ color: 0x9db6bc,
+    metalness: .45, roughness: .56, emissive: 0x263b40,
+    emissiveIntensity: .58 });
+  const scaffoldHelper = new THREE.Object3D();
+  const scaffoldDirection = new THREE.Vector3();
+  const scaffoldMidpoint = new THREE.Vector3();
+  const scaffoldStart = new THREE.Vector3();
+  const scaffoldEnd = new THREE.Vector3();
+  const addScaffoldBeam = (mesh, index, x1, y1, z1, x2, y2, z2, width = .5) => {
+    scaffoldStart.set(x1, y1, z1);
+    scaffoldEnd.set(x2, y2, z2);
+    scaffoldDirection.subVectors(scaffoldEnd, scaffoldStart);
+    scaffoldMidpoint.addVectors(scaffoldStart, scaffoldEnd).multiplyScalar(.5);
+    scaffoldHelper.position.copy(scaffoldMidpoint);
+    scaffoldHelper.quaternion.setFromUnitVectors(up, scaffoldDirection.clone().normalize());
+    scaffoldHelper.scale.set(width / .5, scaffoldDirection.length(), width / .5);
+    scaffoldHelper.updateMatrix();
+    mesh.setMatrixAt(index, scaffoldHelper.matrix);
+  };
   for (const [corner, side, shift, width] of [
     [1, 1, -120, 70], [2, -1, 35, 65], [7, 1, -65, 80],
     [10, -1, 48, 72], [18, -1, -55, 100], [19, 1, -95, 85],
@@ -491,17 +516,66 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
     stand.position.y = 0;
     stand.quaternion.copy(frame.quaternion);
     group.add(stand);
+    const stationCount = Math.max(4, Math.ceil(width / 13));
+    const stations = Array.from({ length: stationCount }, (_, index) =>
+      -width / 2 + 3 + index * (width - 6) / (stationCount - 1));
+    // Two legs and a transverse bearer below each tier at every station;
+    // a diagonal on alternating stations stiffens the frame visibly.
+    const diagonalCount = Math.ceil(stationCount / 2);
+    const scaffold = new THREE.InstancedMesh(scaffoldSection, scaffoldMetal,
+      5 * (stationCount * 3 + diagonalCount) + 2 * diagonalCount
+      + stationCount * 3);
+    scaffold.name = 'Grandstand steel legs and diagonal scaffold bracing';
+    let beam = 0;
     for (let tier = 0; tier < 5; tier++) {
+      const centre = side * tier * 5.7;
+      const underside = 2.29 + tier * 2.5;
       const deck = new THREE.Mesh(new THREE.BoxGeometry(6.2, .42, width),
         tier % 2 ? dark : roof);
-      deck.position.set(side * (tier * 5.7), 2.5 + tier * 2.5, 0);
+      deck.position.set(centre, 2.5 + tier * 2.5, 0);
       stand.add(deck);
       const seats = new THREE.Mesh(new THREE.BoxGeometry(4.5, .25, width - 2),
         tier % 3 === 0 ? pale : new THREE.MeshStandardMaterial({
           color: 0xb12832, roughness: .85 }));
-      seats.position.set(side * (tier * 5.7), 2.85 + tier * 2.5, 0);
+      seats.position.set(centre, 2.85 + tier * 2.5, 0);
       stand.add(seats);
+      for (let station = 0; station < stations.length; station++) {
+        const z = stations[station];
+        const front = centre - side * 2.3;
+        const back = centre + side * 2.3;
+        addScaffoldBeam(scaffold, beam++, front, .04, z,
+          front, underside, z);
+        addScaffoldBeam(scaffold, beam++, back, .04, z,
+          back, underside, z);
+        addScaffoldBeam(scaffold, beam++, front, underside - .12, z,
+          back, underside - .12, z, .36);
+        if (station % 2 === 0) {
+          addScaffoldBeam(scaffold, beam++, front, .12, z,
+            back, underside - .16, z, .4);
+        }
+      }
     }
+    // Open triangular frames, rather than a solid skirt, make the support
+    // legible even from the opposite side of the straight.
+    for (const z of stations) {
+      addScaffoldBeam(scaffold, beam++, -side * 2.3, .12, z,
+        side * 25.1, 12.29, z, .66);
+      addScaffoldBeam(scaffold, beam++, -side * 2.3, .025, z,
+        -side * 2.3, .17, z, .95);
+      addScaffoldBeam(scaffold, beam++, side * 25.1, .025, z,
+        side * 25.1, .17, z, .95);
+    }
+    for (let station = 0; station < stations.length; station += 2) {
+      const z = stations[station];
+      // Rear columns meet the roof, and a shallow raker carries its
+      // cantilevered edge without poles obscuring the first seating tier.
+      addScaffoldBeam(scaffold, beam++, side * 24.8, 12.72, z,
+        side * 24.8, 16.1, z, .55);
+      addScaffoldBeam(scaffold, beam++, side * 24.8, 14.1, z,
+        side * .4, 16.05, z, .42);
+    }
+    scaffold.instanceMatrix.needsUpdate = true;
+    stand.add(scaffold);
     const canopy = new THREE.Mesh(new THREE.BoxGeometry(35, .8, width + 5),
       roof);
     canopy.position.set(side * 12, 16.5, 0);
