@@ -779,6 +779,9 @@ h1 span { color: #ff5851; font-weight: 700; }
   .loading-line { animation: none; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+@media (max-width: 680px) {
+  .topbar nav .return-link:not(:first-child) { display: none; }
+}
 
 /* Marina Bay at night: the warm line ties the track lighting to the UI. */
 .topbar nav { display: flex; gap: 8px; pointer-events: auto; }

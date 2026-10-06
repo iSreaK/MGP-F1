@@ -1,5 +1,6 @@
 scripts/monza-replay/raw/
 scripts/singapore-replay/raw/
+scripts/austin-replay/raw/
 scripts/singapore/*.png
 scripts/singapore/*.pdf
 scripts/singapore/marina_bay-source.svg
