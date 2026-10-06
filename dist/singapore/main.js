@@ -211,13 +211,14 @@ if (renderer) {
     raceHud.classList.toggle('is-compact', compact);
     raceHudToggle.setAttribute('aria-expanded', String(!compact));
     raceHudToggle.setAttribute('aria-label', compact ? 'Afficher toutes les statistiques de course' : 'Réduire les statistiques de course');
-    raceHudToggle.textContent = compact ? 'Plus' : 'Moins';
+    raceHudToggle.textContent = compact ? 'Détails' : 'Réduire';
   }
 
   function setControlsExpanded(expanded) {
     atlas.classList.toggle('controls-expanded', expanded);
     controlsToggle.setAttribute('aria-expanded', String(expanded));
-    controlsToggle.textContent = expanded ? 'Réduire les commandes' : 'Commandes';
+    controlsToggle.textContent = expanded ? 'Fermer' : 'Commandes';
+    controlsToggle.setAttribute('aria-label', expanded ? 'Fermer les commandes' : 'Ouvrir les commandes');
   }
 
   function setImmersive(immersive) {
@@ -331,7 +332,7 @@ if (renderer) {
       replayGarageLink.setAttribute('aria-label', `Voir la monoplace de ${garageEntry.driverName} au garage`);
     }
     if (replayToggle) {
-      replayToggle.textContent = historicalReplay.playing ? 'Ⅱ  Pause' : '▶  Lecture';
+      replayToggle.textContent = historicalReplay.playing ? 'Pause' : 'Lecture';
       replayToggle.setAttribute('aria-pressed', String(historicalReplay.playing));
       replayToggle.setAttribute('aria-label', historicalReplay.playing ? 'Mettre le replay en pause' : 'Lire le replay');
     }
@@ -364,7 +365,7 @@ if (renderer) {
     }
     raceHudCode.textContent = `${replayNames[selected.number].toUpperCase()} / ${selected.number}`;
     raceSpeed.textContent = Math.round(selected.speedKph).toString();
-    if (quickPause) quickPause.textContent = historicalReplay.playing ? 'Ⅱ Pause' : '▶ Lecture';
+    if (quickPause) quickPause.textContent = historicalReplay.playing ? 'Pause' : 'Lecture';
     raceLap.textContent = `TOUR ${selected.lap} / ${replayTotalLaps}`;
     const lapDistance = replayLapDistance(selected.progressMeters, historicalReplay.data.session, selected.finished);
     raceDistance.textContent = `${(lapDistance / 1000).toFixed(2).replace('.', ',')} / 4,93 KM`;
@@ -481,7 +482,7 @@ if (renderer) {
     setReplayPanelCompact(false);
     endSessionUI();
     if (replayButton) {
-      replayButton.textContent = '◷  Replay GP 2025';
+      replayButton.textContent = 'Replay GP 2025';
       replayButton.setAttribute('aria-pressed', 'false');
     }
     if (weatherButton) weatherButton.disabled = false;
@@ -544,7 +545,7 @@ if (renderer) {
       beginSessionUI();
       setReplayPanelCompact(true);
       if (replayButton) {
-        replayButton.textContent = '✕  Quitter le replay';
+        replayButton.textContent = 'Quitter le replay';
         replayButton.setAttribute('aria-pressed', 'true');
       }
       if (weatherButton) weatherButton.disabled = true;
@@ -635,10 +636,10 @@ if (renderer) {
     freeRaceField?.pause();
     raceController.stop();
     controls.enabled = true;
-    raceButton.textContent = '▶  Reprendre la simulation';
+    raceButton.textContent = 'Reprendre la simulation';
     raceButton.setAttribute('aria-pressed', 'false');
     raceLabel.textContent = 'STATS · PAUSE';
-    quickPause.textContent = '▶ Reprendre';
+    quickPause.textContent = 'Reprendre';
     gestureHint.innerHTML = exploreHint;
   }
 
@@ -655,7 +656,7 @@ if (renderer) {
     controls.enabled = true;
     raceHud.hidden = true;
     endSessionUI();
-    raceButton.textContent = '▶  Simulation libre';
+    raceButton.textContent = 'Simulation libre';
     raceButton.setAttribute('aria-pressed', 'false');
     raceLabel.innerHTML = '<span class="race-live" aria-hidden="true"></span> STATS & TEMPS';
     gestureHint.innerHTML = exploreHint;
@@ -689,13 +690,13 @@ if (renderer) {
     racing = true;
     cameraMove = null;
     controls.enabled = false;
-    raceButton.textContent = 'Ⅱ  Pause simulation';
+    raceButton.textContent = 'Pause simulation';
     raceButton.setAttribute('aria-pressed', 'true');
     raceLabel.innerHTML = '<span class="race-live" aria-hidden="true"></span> STATS & TEMPS';
     raceSpeedLabel.textContent = 'VITESSE INSTANTANÉE';
     raceHud.hidden = false;
     beginSessionUI();
-    quickPause.textContent = 'Ⅱ Pause';
+    quickPause.textContent = 'Pause';
     updateCameraHint();
     if (cameraModeButton) {
       cameraModeButton.hidden = false;
@@ -884,13 +885,19 @@ if (renderer) {
     else startReplay();
   });
   replayPanelToggle?.addEventListener('click', () => {
-    setReplayPanelCompact(!replayPanel.classList.contains('is-compact'));
+    const opening = replayPanel.classList.contains('is-compact');
+    if (opening) setControlsExpanded(false);
+    setReplayPanelCompact(!opening);
   });
   raceHudToggle?.addEventListener('click', () => {
     setRaceHudCompact(!raceHud.classList.contains('is-compact'));
   });
   controlsToggle?.addEventListener('click', () => {
-    setControlsExpanded(!atlas.classList.contains('controls-expanded'));
+    const opening = !atlas.classList.contains('controls-expanded');
+    if (opening && replayPanel && !replayPanel.hidden && !replayPanel.classList.contains('is-compact')) {
+      setReplayPanelCompact(true);
+    }
+    setControlsExpanded(opening);
   });
   quickPause?.addEventListener('click', () => {
     if (replayActive) replayToggle?.click();

@@ -1,0 +1,229 @@
+/* Shared layout for the four circuit views. Route styles keep their own colours. */
+.atlas .topbar nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.atlas .return-link,
+.atlas .circuit-menu__toggle {
+  min-height: 46px;
+  line-height: 1.2;
+}
+
+.atlas .return-link,
+.atlas .actions button,
+.atlas .compact-controls button,
+.atlas .race-hud-toggle,
+.atlas .replay-toggle,
+.atlas .replay-panel-toggle,
+.atlas .replay-skip-pause,
+.atlas .immersive-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.atlas:not(.is-session) .circuit-data {
+  top: clamp(108px, 15vh, 146px);
+  width: 268px;
+  padding: 14px 17px;
+}
+.atlas:not(.is-session) .data-heading { margin-bottom: 10px; }
+.atlas:not(.is-session) .data-note { margin-top: 10px; }
+
+.toolbar { gap: 16px; }
+.gesture-hint { flex: 1 1 110px; min-width: 0; max-width: 170px; }
+.atlas:not(.is-session) .control-panel,
+.atlas.is-session.controls-expanded .control-panel {
+  flex: 0 1 900px;
+  width: min(900px, calc(100vw - 2 * clamp(20px, 3.8vw, 58px)));
+  min-width: 0;
+  max-width: 100%;
+  padding: 13px 14px;
+}
+.control-label { margin-bottom: 6px; font-size: 11px; }
+.control-help { max-width: 72ch; margin-bottom: 11px; color: #c9d7d7; font-size: 12px; line-height: 1.4; }
+.atlas.is-session .control-label,
+.atlas.is-session .control-help { display: none; }
+
+.actions {
+  display: grid;
+  grid-template-columns: minmax(255px, .88fr) minmax(0, 1.5fr);
+  align-items: end;
+  gap: 16px;
+  min-width: 0;
+}
+.action-divider { display: none; }
+.mode-actions,
+.view-actions {
+  display: grid;
+  align-content: end;
+  align-items: stretch;
+  gap: 7px;
+  min-width: 0;
+}
+.mode-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.view-actions { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.view-actions:has(.camera-button[hidden]) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.mode-actions::before,
+.view-actions::before {
+  grid-column: 1 / -1;
+  color: #abbfc2;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  line-height: 1.2;
+}
+.mode-actions::before { content: "MODE DE COURSE"; }
+.view-actions::before { content: "VUE ET CONDITIONS"; }
+.actions button {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  padding: 7px 9px;
+  font-size: 13px;
+  white-space: normal;
+}
+.view-actions button {
+  border-color: rgba(204, 223, 228, .18);
+  background: rgba(255, 255, 255, .055);
+}
+.atlas .compact-controls button { min-height: 44px; padding: 8px 13px; font-size: 13px; }
+.atlas .immersive-toggle { min-height: 44px; font-size: 13px; }
+
+.atlas.is-session .race-hud { width: 268px; }
+.atlas .race-label { font-size: 11px; }
+.atlas .race-speed-label,
+.atlas .race-quick small,
+.atlas .race-timing small,
+.atlas .race-lap small { font-size: 11px; letter-spacing: .035em; }
+.atlas .race-quick strong { font-size: 14px; }
+.atlas .race-quick #race-lap { font-size: 12px; }
+.atlas .race-hud-toggle { min-height: 38px; padding: 6px 9px; font-size: 12px; }
+
+.atlas.is-session .replay-panel { width: 352px; }
+.atlas .replay-panel .replay-panel-toggle { min-height: 40px; padding: 7px 11px; font-size: 12px; }
+.atlas .replay-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 68px;
+  align-items: center;
+  gap: 8px;
+}
+.atlas .replay-controls label,
+.atlas .replay-timeline-head label { font-size: 12px; }
+.atlas .replay-toggle { width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px; font-size: 13px; }
+.atlas #replay-speed { width: 68px; min-width: 0; min-height: 44px; padding: 6px; font-size: 13px; }
+.atlas .replay-timeline-head output { font-size: 12px; }
+.atlas .replay-garage-link { font-size: 13px; }
+.atlas .replay-model-note { font-size: 11px; }
+.atlas .replay-telemetry { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.atlas .replay-telemetry > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  min-height: 44px;
+  padding: 8px 9px;
+  text-align: left;
+}
+.atlas .replay-telemetry span { font-size: 10px; letter-spacing: .015em; }
+.atlas .replay-telemetry strong { margin: 0; font-size: 13px; white-space: nowrap; }
+.atlas .replay-ranking-head h3 { font-size: 12px; }
+.atlas .replay-rankings button { min-height: 44px; }
+.atlas .replay-rankings button strong { min-width: 0; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.atlas .replay-rankings button small { font-size: 11px; }
+
+/* The ranking may be open while a visitor still needs play and camera controls. */
+@media (min-width: 761px) {
+  .atlas.is-session:has(#replay-panel:not([hidden]):not(.is-compact)):not(.controls-expanded) .toolbar {
+    display: flex;
+    left: clamp(20px, 3.8vw, 58px);
+    right: auto;
+    width: auto;
+    padding: 0 0 calc(clamp(24px, 3vw, 40px) + 56px);
+  }
+}
+
+@media (max-width: 1180px) {
+  .gesture-hint { display: none; }
+  .toolbar { justify-content: flex-end; }
+}
+@media (max-width: 960px) {
+  .actions { grid-template-columns: minmax(0, 1fr); gap: 11px; }
+  .atlas:not(.is-session) .control-panel,
+  .atlas.is-session.controls-expanded .control-panel { flex-basis: 760px; width: min(760px, calc(100vw - 40px)); }
+  .view-actions { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1050px) {
+  .atlas:not(.is-session) .control-panel,
+  .atlas.is-session.controls-expanded .control-panel { flex: none; }
+}
+
+@media (max-width: 760px) {
+  .atlas:not(.is-session) .circuit-data { top: 95px; width: 242px; padding: 12px 15px; }
+  .atlas:not(.is-session) .toolbar { left: 0; right: 0; padding: 12px 16px 16px; }
+  .atlas:not(.is-session) .control-panel,
+  .atlas.is-session.controls-expanded .control-panel { width: 100%; padding: 10px; }
+  .control-help { font-size: 12px; }
+  .mode-actions,
+  .view-actions,
+  .view-actions:has(.camera-button[hidden]) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #atlas .view-actions > button { grid-column: auto; }
+  #atlas .view-actions > .camera-button:not([hidden]):last-child { grid-column: 1 / -1; }
+  .actions button { min-height: 44px; padding: 7px 8px; font-size: 12px; }
+  #atlas.is-session #race-hud { width: 195px; padding: 10px; }
+  #atlas.is-session #race-hud:not(.is-compact) { width: min(265px, calc(100vw - 24px)); }
+  .atlas.is-session .race-hud-head { flex-wrap: nowrap; gap: 4px; }
+  .atlas.is-session .race-label { font-size: 10px; letter-spacing: 0; line-height: 1.2; }
+  .atlas.is-session .race-hud-toggle { min-height: 34px; padding: 5px 6px; font-size: 11px; }
+  .atlas.is-session .race-readout strong { font-size: 40px; }
+  .atlas.is-session .race-readout span { font-size: 11px; }
+  .atlas.is-session .race-quick small { font-size: 10px; }
+  .atlas.is-session .race-quick strong,
+  .atlas.is-session .race-quick #race-lap { font-size: 12px; }
+  .atlas.is-session .race-hud.is-compact .race-quick > div:last-child { display: none; }
+  #atlas.is-session #replay-panel.is-compact { top: 65px; right: 12px; width: auto; }
+  #atlas.is-session #replay-panel:not(.is-compact) { left: 12px; right: 12px; width: auto; }
+  .atlas.is-session .compact-controls button { min-height: 44px; font-size: 12px; }
+  .atlas.is-session .immersive-toggle { min-height: 44px; font-size: 12px; }
+}
+
+@media (max-width: 480px) {
+  .atlas .topbar,
+  .atlas.is-session .topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .atlas .topbar nav { justify-content: space-between; }
+  .atlas .topbar .return-link,
+  .atlas .topbar .circuit-menu__toggle,
+  .atlas.is-session .topbar .return-link,
+  .atlas.is-session .topbar .circuit-menu__toggle { min-height: 40px; }
+  .atlas .topbar .return-text-mobile { font-size: 12px; }
+  .atlas .topbar .circuit-menu { min-width: 132px; }
+  .atlas .topbar .circuit-menu__eyebrow { font-size: 10px; }
+  .atlas .topbar .circuit-menu__current { font-size: 13px; }
+  .atlas:not(.is-session) .circuit-data { top: 112px; left: 12px; }
+  #atlas.is-session #race-hud,
+  #atlas.is-session #replay-panel.is-compact { top: 111px; }
+  #atlas.is-session #replay-panel:not(.is-compact) { top: 111px; }
+  .atlas .replay-telemetry span { font-size: 10px; }
+}
+
+@media (max-width: 360px) {
+  .atlas .topbar .return-text-mobile { display: inline; }
+  .atlas .replay-timeline-head { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  .atlas .replay-timeline-head output { justify-self: end; }
+  .atlas .replay-telemetry { grid-template-columns: minmax(0, 1fr); }
+  .atlas .replay-telemetry > div { min-height: 38px; }
+  .atlas.is-session .race-label { font-size: 0; }
+  .atlas.is-session .race-label::after { content: "STATS"; font-size: 11px; }
+  .atlas.is-session .immersive-toggle { bottom: 80px; }
+}

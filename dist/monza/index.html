@@ -9,6 +9,7 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307100f'/%3E%3Cpath d='M12 45V19h7l13 15 13-15h7v26h-8V30L32 44 20 30v15Z' fill='%23f1f2e9'/%3E%3Cpath d='M12 51h40' stroke='%23dc4337' stroke-width='4'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="../circuit-menu.css" />
+    <link rel="stylesheet" href="../circuit-ux.css" />
     <script defer src="../circuit-menu.js"></script>
     <script type="importmap">
       {"imports":{"three":"../vendor/three/build/three.module.js"}}
@@ -80,8 +81,8 @@
         </div>
         <p class="replay-status" id="replay-status" role="status" aria-live="polite">Chargement des données de course…</p>
         <div class="replay-controls">
-          <button type="button" id="replay-toggle" class="replay-toggle" aria-label="Lire le replay">▶ Lecture</button>
-          <label for="replay-speed">Lecture</label>
+          <button type="button" id="replay-toggle" class="replay-toggle" aria-label="Lire le replay">Lecture</button>
+          <label for="replay-speed">Vitesse</label>
           <select id="replay-speed" aria-label="Vitesse de lecture du replay">
             <option value="1" selected>×1</option>
             <option value="4">×4</option>
@@ -118,14 +119,14 @@
       <footer class="toolbar">
         <p class="gesture-hint">Glisser pour tourner <span>·</span> Molette ou pincement pour zoomer</p>
         <div class="control-panel">
-          <div class="compact-controls" id="compact-controls" hidden><button type="button" id="quick-pause" class="quick-pause">Ⅱ Pause</button><button type="button" id="controls-toggle" aria-expanded="false" aria-controls="course-actions">Commandes</button></div>
+          <div class="compact-controls" id="compact-controls" hidden><button type="button" id="quick-pause" class="quick-pause">Pause</button><button type="button" id="controls-toggle" aria-expanded="false" aria-controls="course-actions">Commandes</button></div>
           <div id="course-actions" class="course-actions">
           <span class="control-label" aria-hidden="true">EXPLORER MONZA <span>01 / CIRCUIT</span></span>
           <p class="control-help" id="control-help">Simulation libre : les voitures roulent automatiquement. Replay GP 2026 : revivez la course à partir des données historiques.</p>
           <div class="actions">
             <div class="mode-actions" role="group" aria-label="Choisir un mode de course">
-              <button type="button" id="race" class="race-button" disabled aria-pressed="false" aria-describedby="control-help" title="Lancer une animation libre des voitures">▶&nbsp; Simulation libre</button>
-              <button type="button" id="replay" class="replay-button" disabled aria-pressed="false" aria-describedby="control-help" title="Revoir le Grand Prix 2026 avec les données de course">◷&nbsp; Replay GP 2026</button>
+              <button type="button" id="race" class="race-button" disabled aria-pressed="false" aria-describedby="control-help" title="Lancer une animation libre des voitures">Simulation libre</button>
+              <button type="button" id="replay" class="replay-button" disabled aria-pressed="false" aria-describedby="control-help" title="Revoir le Grand Prix 2026 avec les données de course">Replay GP 2026</button>
             </div>
             <span class="action-divider" aria-hidden="true"></span>
             <div class="view-actions" role="group" aria-label="Explorer le circuit et la caméra">

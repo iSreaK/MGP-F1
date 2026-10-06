@@ -9,6 +9,7 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23061326'/%3E%3Cpath d='M44 17H22c-7 0-11 4-11 10 0 7 5 10 13 10h12c3 0 5 1 5 4s-2 4-5 4H13v7h23c9 0 14-5 14-12 0-8-5-11-14-11H24c-3 0-4-1-4-3s1-3 4-3h20Z' fill='%23f3ece2'/%3E%3Cpath d='M12 57h40' stroke='%23f5b866' stroke-width='3'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="../circuit-menu.css" />
+    <link rel="stylesheet" href="../circuit-ux.css" />
     <script defer src="../circuit-menu.js"></script>
     <script type="importmap">
       {"imports":{"three":"../vendor/three/build/three.module.js"}}
@@ -80,8 +81,8 @@
         </div>
         <p class="replay-status" id="replay-status" role="status" aria-live="polite">Chargement des données de course…</p>
         <div class="replay-controls">
-          <button type="button" id="replay-toggle" class="replay-toggle" aria-label="Lire le replay">▶ Lecture</button>
-          <label for="replay-speed">Lecture</label>
+          <button type="button" id="replay-toggle" class="replay-toggle" aria-label="Lire le replay">Lecture</button>
+          <label for="replay-speed">Vitesse</label>
           <select id="replay-speed" aria-label="Vitesse de lecture du replay">
             <option value="1" selected>×1</option>
             <option value="4">×4</option>
@@ -119,14 +120,14 @@
       <footer class="toolbar">
         <p class="gesture-hint">Glisser pour tourner <span>·</span> Molette ou pincement pour zoomer</p>
         <div class="control-panel">
-          <div class="compact-controls" id="compact-controls" hidden><button type="button" id="quick-pause" class="quick-pause">Ⅱ Pause</button><button type="button" id="controls-toggle" aria-expanded="false" aria-controls="course-actions">Commandes</button></div>
+          <div class="compact-controls" id="compact-controls" hidden><button type="button" id="quick-pause" class="quick-pause">Pause</button><button type="button" id="controls-toggle" aria-expanded="false" aria-controls="course-actions">Commandes</button></div>
           <div id="course-actions" class="course-actions">
           <span class="control-label" aria-hidden="true">EXPLORER SINGAPOUR <span>02 / CIRCUIT</span></span>
           <p class="control-help" id="control-help">Circuit urbain de nuit. Replay GP 2025 : 19 des 20 pilotes représentés avec les modèles 2026 du garage.</p>
           <div class="actions">
             <div class="mode-actions" role="group" aria-label="Choisir un mode de course">
-              <button type="button" id="race" class="race-button" disabled aria-pressed="false" aria-describedby="control-help" title="Lancer une animation libre des voitures">▶&nbsp; Simulation libre</button>
-              <button type="button" id="replay" class="replay-button" disabled aria-pressed="false" aria-describedby="control-help" title="Revoir le Grand Prix de Singapour 2025 avec les données de course">◷&nbsp; Replay GP 2025</button>
+              <button type="button" id="race" class="race-button" disabled aria-pressed="false" aria-describedby="control-help" title="Lancer une animation libre des voitures">Simulation libre</button>
+              <button type="button" id="replay" class="replay-button" disabled aria-pressed="false" aria-describedby="control-help" title="Revoir le Grand Prix de Singapour 2025 avec les données de course">Replay GP 2025</button>
             </div>
             <span class="action-divider" aria-hidden="true"></span>
             <div class="view-actions" role="group" aria-label="Explorer le circuit et la caméra">
