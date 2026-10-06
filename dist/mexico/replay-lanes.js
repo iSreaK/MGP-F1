@@ -107,8 +107,14 @@ export function computeReplayPlacements(cars, gridU, trackGap, sourceLapMeters =
       const laneIndex = stable.findIndex(other => other.number === car.number);
       const target = (laneIndex - (stable.length - 1) / 2) * spread;
       const placement = placements.get(car.number);
+      // Two GPS traces can report almost the same station and lane even when
+      // the cars are visibly side by side. In that case the inferred lateral
+      // confidence must yield to the non-overlap constraint before contact.
+      const confidence = clamp01(car.lateralConfidence || 0);
+      const confidenceWeight = stable.length === 2
+        ? confidence * smoothstep((closest - 2) / 8) : confidence;
       placement.offset += (target - placement.offset) * closeness * afterStart
-        * (1 - clamp01(car.lateralConfidence || 0));
+        * (1 - confidenceWeight);
     }
   }
 

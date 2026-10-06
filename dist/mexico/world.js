@@ -2,10 +2,10 @@ import { TRACK_POINTS, TRACK_LENGTH_METERS, TRACK_WIDTH_METERS, LANDMARKS } from
 import { addMexicoEnvironment } from './environment.js';
 import { addMexicoGridDetails } from './grid-details.js';
 import { addMexicoTrackside } from './trackside-details.js';
-import { prepareMexicoCurve } from './geometry-smoothing.js';
+import { prepareMexicoCurve, trackBankAngleAtFraction } from './geometry-smoothing.js';
 
-// FIA plan-view geometry, smooth nearly level park surface. Widths and
-// kerb/run-off placements remain visual estimates rather than a kerb survey.
+// FIA plan-view geometry with subtle park relief. Widths and kerb/run-off
+// placements remain visual estimates rather than a kerb survey.
 const SAMPLE_COUNT = 2584;
 
 function textureFromPixels(THREE, size, paint) {
@@ -146,9 +146,12 @@ function createRibbon(THREE, scene, name, frames, distances, from, to, material,
     const fromB = typeof from === 'function' ? from(nextU) : from;
     const toB = typeof to === 'function' ? to(nextU) : to;
     const first = positions.length / 3;
-    for (const [frame, offset] of [[a, fromA], [a, toA], [b, fromB], [b, toB]]) {
+    for (const [frame, offset, station] of [[a, fromA, u], [a, toA, u],
+      [b, fromB, nextU], [b, toB, nextU]]) {
       const lift = typeof height === 'function' ? height(frame, offset) : height;
-      positions.push(frame.point.x + frame.across.x * offset, frame.point.y + lift,
+      const banking = options.bankHeightAt?.(station, offset) ?? 0;
+      positions.push(frame.point.x + frame.across.x * offset,
+        frame.point.y + banking + lift,
         frame.point.z + frame.across.z * offset);
       normals.push(0, 1, 0);
     }
@@ -162,6 +165,7 @@ function createRibbon(THREE, scene, name, frames, distances, from, to, material,
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
+  geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = name;
@@ -211,8 +215,9 @@ function terrainHeightSampler(terrain) {
 
 // The venue's maintained park terrain follows the road at the edges and
 // merges into the flat Mexico City basin beyond the infield.
-function addParkTerrain(THREE, scene, samples) {
-  const measured = samples.filter((_, index) => index % 16 === 0);
+function addParkTerrain(THREE, scene, samples, frames, halfWidth, bankHeightAt) {
+  const measured = samples.flatMap((point, index) => index % 16 === 0
+    ? [{ point, u: index / samples.length }] : []);
   const box = new THREE.Box3().setFromPoints(samples);
   const margin = 360;
   const minX = box.min.x - margin, maxX = box.max.x + margin;
@@ -220,16 +225,15 @@ function addParkTerrain(THREE, scene, samples) {
   const nx = Math.ceil((maxX - minX) / 21);
   const nz = Math.ceil((maxZ - minZ) / 21);
   const stepX = (maxX - minX) / nx, stepZ = (maxZ - minZ) / nz;
-  const base = Math.min(...measured.map(point => point.y)) - .86;
+  const base = Math.min(...measured.map(({ point }) => point.y)) - .86;
   const plainRGB = [.345, .422, .291];
   const plainColor = new THREE.Color().setRGB(...plainRGB);
   const groundMap = parkTexture(THREE);
   const tileMetres = 54;
   const centreX = (minX + maxX) / 2, centreZ = (minZ + maxZ) / 2;
   const textureLeft = centreX - 9000, textureTop = centreZ + 9000;
-  // The venue itself is flat in the Mexico basin. Gentle distant ridges and
-  // the matching texture UVs break the far horizon without a seam at the
-  // rectangular edge of the playable park terrain.
+  // The venue sits in a broad basin. Distant ridges and matching texture UVs
+  // break the horizon without a seam at the local terrain boundary.
   const plainGeometry = new THREE.PlaneGeometry(18000, 18000, 120, 120);
   const plainPositions = plainGeometry.getAttribute('position');
   const plainUV = plainGeometry.getAttribute('uv');
@@ -263,25 +267,36 @@ function addParkTerrain(THREE, scene, samples) {
     let nearHeight = base;
     for (let k = 0; k < measured.length; k++) {
       const a = measured[k], b = measured[(k + 1) % measured.length];
-      const dx = b.x - a.x, dz = b.z - a.z;
+      const dx = b.point.x - a.point.x, dz = b.point.z - a.point.z;
       const blend = Math.max(0, Math.min(1,
-        ((x - a.x) * dx + (z - a.z) * dz) / Math.max(.001, dx * dx + dz * dz)));
-      const px = a.x + blend * dx, pz = a.z + blend * dz;
+        ((x - a.point.x) * dx + (z - a.point.z) * dz)
+          / Math.max(.001, dx * dx + dz * dz)));
+      const px = a.point.x + blend * dx, pz = a.point.z + blend * dz;
       const square = (x - px) ** 2 + (z - pz) ** 2;
       if (square < distanceSquared) {
         distanceSquared = square;
-        nearHeight = a.y + blend * (b.y - a.y);
+        const horizontalLength = Math.max(.001, Math.hypot(dx, dz));
+        const lateral = ((x - px) * dz - (z - pz) * dx) / horizontalLength;
+        const forwardU = (b.u - a.u + 1) % 1;
+        const stationU = (a.u + blend * forwardU) % 1;
+        nearHeight = a.point.y + blend * (b.point.y - a.point.y)
+          + bankHeightAt(stationU, lateral);
       }
     }
     const distance = Math.sqrt(distanceSquared);
     const edgeDistance = Math.min(x - minX, maxX - x, z - minZ, maxZ - z);
     const edgeFade = smoothstep(edgeDistance / 135);
-    const ridge = (valueNoise(x / 410, z / 410) - .5) * .38
-      + (valueNoise(x / 170 + 8, z / 170 - 11) - .5) * .13;
-    const undulation = ridge * edgeFade;
+    // Sculpt shallow park earthworks well beyond the catch fences. The first
+    // 36 m around the road stay smooth so barriers, signs and runoff retain a
+    // sound footing. Broad noise rather than short waves keeps the long views
+    // natural and gives the stadium approach some readable depth.
+    const reliefFade = smoothstep((distance - 36) / 95);
+    const ridge = (valueNoise(x / 410, z / 410) - .5) * 2.05
+      + (valueNoise(x / 170 + 8, z / 170 - 11) - .5) * .46;
+    const undulation = ridge * reliefFade * edgeFade;
     const far = base + undulation;
     const bank = nearHeight - .18 - Math.min(.66, Math.max(0, distance - 10) * .004);
-    const following = 1 - smoothstep((distance - 12) / 210);
+    const following = 1 - smoothstep((distance - 12) / 170);
     positions.push(x, far * (1 - following) + bank * following, z);
     uvs.push((x - textureLeft) / tileMetres,
       (textureTop - z) / tileMetres);
@@ -306,6 +321,41 @@ function addParkTerrain(THREE, scene, samples) {
       const a = iz * (nx + 1) + ix, b = a + nx + 1;
       indices.push(a, b, a + 1, a + 1, b, b + 1);
     }
+  }
+  // A 21 m terrain triangle can span a sharp inside corner and rise through
+  // the 1.7 m road ribbon even when its vertices are below the centreline.
+  // Carve only the triangles actually under the asphalt and paved shoulder;
+  // the mown verge is generated afterwards against this corrected mesh.
+  const columns = nx + 1;
+  function keepBelowRoad(x, z, roadY, clearance) {
+    const ux = (x - minX) / stepX, uz = (z - minZ) / stepZ;
+    if (ux < 0 || ux > nx || uz < 0 || uz > nz) return;
+    const ix = Math.min(nx - 1, Math.floor(ux));
+    const iz = Math.min(nz - 1, Math.floor(uz));
+    const tx = ux - ix, tz = uz - iz;
+    const a = iz * columns + ix;
+    const corners = tx + tz <= 1
+      ? [[a, 1 - tx - tz], [a + 1, tx], [a + columns, tz]]
+      : [[a + 1, 1 - tz], [a + columns, 1 - tx],
+        [a + columns + 1, tx + tz - 1]];
+    const surfaceY = corners.reduce((sum, [vertex, weight]) =>
+      sum + positions[vertex * 3 + 1] * weight, 0);
+    const overlap = surfaceY - (roadY - clearance);
+    if (overlap <= 0) return;
+    for (const [vertex] of corners) positions[vertex * 3 + 1] -= overlap + .006;
+  }
+  const shoulderEdge = halfWidth + 3.6;
+  const offsets = [-shoulderEdge, -halfWidth - 1.8, -halfWidth,
+    -halfWidth * .75, -halfWidth * .5, -halfWidth * .25, 0,
+    halfWidth * .25, halfWidth * .5, halfWidth * .75, halfWidth,
+    halfWidth + 1.8, shoulderEdge];
+  for (const frame of frames) for (const offset of offsets) {
+    const pavedShoulder = Math.abs(offset) > halfWidth;
+    const roadY = frame.point.y + bankHeightAt(frame.u, offset)
+      - (pavedShoulder ? .16 : 0);
+    keepBelowRoad(frame.point.x + frame.across.x * offset,
+      frame.point.z + frame.across.z * offset, roadY,
+      pavedShoulder ? .045 : .08);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -335,15 +385,19 @@ export function createMexicoWorld(THREE, scene) {
     // A chord through neighbouring samples diverged by up to 6.8 degrees at
     // the sharpest corners, amplifying bends in offset edge lines and walls.
     const forward = curve.getTangentAt(i / SAMPLE_COUNT).setY(0).normalize();
-    return { point, forward, across: new THREE.Vector3(forward.z, 0, -forward.x) };
+    return { point, forward, across: new THREE.Vector3(forward.z, 0, -forward.x),
+      u: i / SAMPLE_COUNT };
   });
   const distances = [0];
   for (let i = 1; i < SAMPLE_COUNT; i++) distances.push(distances[i - 1] + samples[i - 1].distanceTo(samples[i]));
   const half = Math.max(6, Math.min(8.8, Number(TRACK_WIDTH_METERS || 14) / 2));
   // Preserve straight road edges; an invented varying width introduces waves.
   const roadHalfWidthAt = () => half;
+  const bankReach = half + 3.6;
+  const bankHeightAt = (u, offset) => -Math.tan(trackBankAngleAtFraction(u))
+    * Math.max(-bankReach, Math.min(bankReach, offset));
 
-  const terrain = addParkTerrain(THREE, scene, samples);
+  const terrain = addParkTerrain(THREE, scene, samples, frames, half, bankHeightAt);
   const terrainHeightAt = terrainHeightSampler(terrain);
 
   const shoulder = new THREE.MeshStandardMaterial({ color: 0x4d5152, roughness: .94, side: THREE.DoubleSide });
@@ -368,31 +422,35 @@ export function createMexicoWorld(THREE, scene) {
     const z = frame.point.z + frame.across.z * offset;
     const ground = terrainHeightAt(x, z, frame.point.y - 1.08);
     const blend = smoothstep((Math.abs(offset) - half - 3.6) / 6);
-    const y = (frame.point.y - .16) * (1 - blend)
+    const banking = bankHeightAt(frame.u, offset);
+    const y = (frame.point.y + banking - .16) * (1 - blend)
       + (ground + .045) * blend;
-    return y - frame.point.y;
+    return y - frame.point.y - banking;
   };
   createRibbon(THREE, scene, 'Mexico paved shoulder', frames, distances,
-    -half - 3.6, half + 3.6, shoulder, { height: -.16, repeatMetres: 18 });
+    -half - 3.6, half + 3.6, shoulder,
+    { height: -.16, repeatMetres: 18, bankHeightAt });
   for (const [name, side] of [['left', -1], ['right', 1]]) {
     for (const [index, a, b] of [[1, 3.6, 6.6], [2, 6.6, 9.6]]) {
       createRibbon(THREE, scene, `Mexico ${name} mown safety verge ${index}`,
         frames, distances, side < 0 ? -(half + b) : half + a,
         side < 0 ? -(half + a) : half + b,
         grassVerge,
-        { height: vergeHeight, repeatMetres: 18 });
+        { height: vergeHeight, repeatMetres: 18, bankHeightAt });
     }
   }
   createRibbon(THREE, scene, 'Mexico overview circuit silhouette', frames, distances,
-    -half - 4.7, half + 4.7, overviewAccent, { height: .009 });
+    -half - 4.7, half + 4.7, overviewAccent,
+    { height: .009, bankHeightAt });
   createRibbon(THREE, scene, 'Autódromo Hermanos Rodríguez racing surface', frames, distances,
-    u => -roadHalfWidthAt(u), roadHalfWidthAt, asphalt, { repeatMetres: 10 });
+    u => -roadHalfWidthAt(u), roadHalfWidthAt, asphalt,
+    { repeatMetres: 10, bankHeightAt });
   createRibbon(THREE, scene, 'Mexico left track-limit line', frames, distances,
     u => -roadHalfWidthAt(u) + .08, u => -roadHalfWidthAt(u) + .21,
-    white, { height: .018 });
+    white, { height: .018, bankHeightAt });
   createRibbon(THREE, scene, 'Mexico right track-limit line', frames, distances,
     u => roadHalfWidthAt(u) - .21, u => roadHalfWidthAt(u) - .08,
-    white, { height: .018 });
+    white, { height: .018, bankHeightAt });
 
   // Low red/white kerbs and restrained green-exit paint use the same frames
   // as the cars.
@@ -433,21 +491,22 @@ export function createMexicoWorld(THREE, scene) {
     const [runoffFrom, runoffTo] = orderedOffsets(outside, .75, tapered(depth));
     createRibbon(THREE, scene, `Mexico turn ${corner} paved runoff`, frames, distances,
       runoffFrom, runoffTo,
-      pavedRunoff, { include, height: -.037 });
+      pavedRunoff, { include, height: -.037, bankHeightAt });
     const [stripeFrom, stripeTo] = orderedOffsets(outside,
       tapered(depth - 6), tapered(depth - 3));
     createRibbon(THREE, scene, `Mexico turn ${corner} green exit apron`, frames, distances,
       stripeFrom, stripeTo,
-      greenExitPaint, { include, height: -.023 });
+      greenExitPaint, { include, height: -.023, bankHeightAt });
     const [kerbFrom, kerbTo] = orderedOffsets(side, .025, 1.05);
     createRibbon(THREE, scene, `Turn ${corner} striped inside kerb`, frames, distances,
       kerbFrom, kerbTo, curb,
-      { include, height: .027, repeatMetres: 3.2 });
+      { include, height: .027, repeatMetres: 3.2, bankHeightAt });
   }
 
   const grid = addMexicoGridDetails(THREE, scene, curve, sourcePoints, LANDMARKS, 0, half);
   const trackside = addMexicoTrackside(THREE, scene, curve, frames, LANDMARKS,
-    { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: 1 });
+    { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions,
+      pitSide: 1, bankHeightAt });
   const environment = addMexicoEnvironment(THREE, scene, curve, frames, LANDMARKS,
     { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: 1 });
   const bounds = new THREE.Box3().setFromPoints(samples).expandByScalar(180);
@@ -457,7 +516,9 @@ export function createMexicoWorld(THREE, scene) {
     if (!Number.isFinite(x) || !Number.isFinite(z)) return point.y;
     const tangent = curve.getTangentAt(wrapped);
     const grade = tangent.y / Math.max(.01, Math.hypot(tangent.x, tangent.z));
-    return point.y + ((x - point.x) * tangent.x + (z - point.z) * tangent.z) * grade;
+    const along = (x - point.x) * tangent.x + (z - point.z) * tangent.z;
+    const across = (x - point.x) * tangent.z - (z - point.z) * tangent.x;
+    return point.y + along * grade + bankHeightAt(wrapped, across);
   };
   return {
     curve, samples, trackHeightAt, bounds,

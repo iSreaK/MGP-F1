@@ -5,6 +5,7 @@
 export function addMexicoTrackside(THREE, scene, curve, frames, landmarks, options = {}) {
   const { halfWidth = 6.5, gridU = 0, sourceFractions = [],
     pitSide = 1 } = options;
+  const bankHeightAt = options.bankHeightAt ?? (() => 0);
   const group = new THREE.Group();
   group.name = 'Mexico City guardrails, catch fencing and distance boards';
   scene.add(group);
@@ -20,7 +21,7 @@ export function addMexicoTrackside(THREE, scene, curve, frames, landmarks, optio
     const across = new THREE.Vector3(forward.z, 0, -forward.x);
     const quaternion = new THREE.Quaternion().setFromRotationMatrix(
       new THREE.Matrix4().makeBasis(across, up, forward));
-    return { point, forward, across, quaternion };
+    return { u: t, point, forward, across, quaternion };
   }
   function signedStation(u) {
     let delta = u - gridU;
@@ -98,7 +99,7 @@ export function addMexicoTrackside(THREE, scene, curve, frames, landmarks, optio
   }
   function offsetPoint(frame, lateral, rise = 0) {
     return frame.point.clone().addScaledVector(frame.across, lateral)
-      .addScaledVector(up, rise);
+      .addScaledVector(up, bankHeightAt(frame.u, lateral) + rise);
   }
   function allowed(a, b, margin = halfWidth + 3.5) {
     if (distanceToTrack(a.x, a.z) < margin

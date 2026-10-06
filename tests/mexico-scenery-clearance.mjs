@@ -30,6 +30,8 @@ assert.ok(road?.isMesh, 'the Mexico racing surface exists');
 assert.ok(pit?.isMesh, 'the Mexico pit lane exists');
 assert.ok(garages?.isInstancedMesh, 'the pit complex exists');
 assert.ok(environment?.group?.isGroup && trackside?.group?.isGroup);
+assert.ok(scene.getObjectByName('Palacio de los Deportes copper geodesic dome')?.isGroup,
+  'the landmark dome must be present beyond the circuit perimeter');
 
 const cellSize = 24;
 const cells = new Map();

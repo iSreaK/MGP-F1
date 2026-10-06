@@ -788,6 +788,54 @@ export function addMexicoEnvironment(THREE, scene, curve, frames, landmarks, opt
     minX = Math.min(minX, point.x); maxX = Math.max(maxX, point.x);
     minZ = Math.min(minZ, point.z); maxZ = Math.max(maxZ, point.z);
   }
+
+  // The Palacio de los Deportes stands to the west of Estadio GNP. Its
+  // copper geodesic roof gives the park a recognisable skyline without
+  // adding fictional hills to this genuinely level circuit. Keep it beyond
+  // the race and pit surfaces, and reserve the footprint before placing the
+  // surrounding low-rise city blocks.
+  const stadiumZ = [turnU(13), turnU(16)]
+    .filter(Number.isFinite)
+    .map(u => frameAt(u).point.z);
+  const palaceX = minX - 240;
+  const palaceZ = stadiumZ.length
+    ? stadiumZ.reduce((sum, z) => sum + z, 0) / stadiumZ.length + 45
+    : minZ + 190;
+  if (clearDisk(palaceX, palaceZ, 66, 25)) {
+    const palaceY = terrainHeightAt(palaceX, palaceZ, 0);
+    reserved.push({ name: 'Palacio de los Deportes',
+      x: palaceX, z: palaceZ, radius: 68 });
+    const palace = new THREE.Group();
+    palace.name = 'Palacio de los Deportes copper geodesic dome';
+    palace.position.set(palaceX, palaceY, palaceZ);
+    const plinth = new THREE.Mesh(new THREE.CylinderGeometry(65, 67, 4,
+      40), concrete);
+    plinth.name = 'Palacio de los Deportes circular concrete plinth';
+    plinth.position.y = 2;
+    const glazing = new THREE.Mesh(new THREE.CylinderGeometry(61, 63, 7,
+      40), darkGlass);
+    glazing.name = 'Palacio de los Deportes glazed perimeter';
+    glazing.position.y = 7.5;
+    const copperGeometry = new THREE.SphereGeometry(60, 40, 14,
+      0, Math.PI * 2, 0, Math.PI / 2);
+    const copper = new THREE.Mesh(copperGeometry,
+      new THREE.MeshStandardMaterial({ color: 0xb27643,
+        metalness: .48, roughness: .58, flatShading: true,
+        side: THREE.DoubleSide }));
+    copper.name = 'Palacio de los Deportes faceted copper canopy';
+    copper.position.y = 11;
+    copper.scale.y = .52;
+    const lattice = new THREE.LineSegments(
+      new THREE.WireframeGeometry(copperGeometry),
+      new THREE.LineBasicMaterial({ color: 0x664b36,
+        transparent: true, opacity: .43 }));
+    lattice.name = 'Palacio de los Deportes geodesic roof lattice';
+    lattice.position.y = 11.08;
+    lattice.scale.set(1.004, .522, 1.004);
+    palace.add(plinth, glazing, copper, lattice);
+    group.add(palace);
+  }
+
   const buildingSites = [];
   const cityStep = 82;
   const cityX0 = Math.floor((minX - 250) / cityStep) * cityStep;

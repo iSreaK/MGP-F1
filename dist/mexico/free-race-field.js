@@ -12,6 +12,9 @@ const smoothstep = value => {
   const t = clamp(value, 0, 1);
   return t * t * (3 - 2 * t);
 };
+const CAR_LENGTH_METERS = 6.55;
+// A wider lane envelope leaves room for the cars' rotated noses in T7–T11.
+const CAR_WIDTH_METERS = 4.0;
 
 function sampledTrack(points, length) {
   const cumulative = [0];
@@ -151,10 +154,10 @@ export function createFreeRaceField(entries, {
   }
 
   function passingSide(state, ahead) {
-    const base = racingLineOffset(wrap01(gridU + progress(state) / length));
     const costs = [-1, 1].map(side => {
-      const target = clamp(base + side * 2.65, -3.5, 3.5);
-      let cost = 0;
+      const target = side * 3.55;
+      let cost = Math.max(0, CAR_WIDTH_METERS -
+        Math.abs(ahead.offset - target)) * 10;
       for (const other of states) {
         if (other === state || other === ahead) continue;
         const gap = Math.min(stationGap(other, state), stationGap(state, other));
@@ -207,7 +210,7 @@ export function createFreeRaceField(entries, {
       }
       let targetOffset = racingOffset;
       if (state.passingNumber !== null)
-        targetOffset = clamp(racingOffset + state.passSide * 2.65, -3.5, 3.5);
+        targetOffset = state.passSide * 3.55;
       if (state.entry.pitLaneStart) {
         const merge = smoothstep((s - 165) / 65);
         targetOffset = -14.5 + (targetOffset + 14.5) * merge;
@@ -249,18 +252,68 @@ export function createFreeRaceField(entries, {
       }
     }
 
-    for (const { state, targetSpeed, targetOffset, afterStart } of intentions) {
-      const before = state.distanceMeters;
+    const proposals = intentions.map(({ state, targetSpeed, targetOffset, afterStart }) => {
       const braking = state.traits.braking * (wet ? .83 : 1);
       const acceleration = state.traits.acceleration * (wet ? .82 : 1);
       const speed = afterStart ? clamp(targetSpeed, state.speed - braking * dt,
         state.speed + acceleration * dt) : 0;
-      state.distanceMeters += Math.max(0, (state.speed + speed) * .5 * dt);
-      state.speed = Math.max(0, speed);
       const merging = state.entry.pitLaneStart && progress(state) >= 160
         && progress(state) <= 250;
       const lateralStep = dt * (merging ? 5.5 : 2.9);
-      state.offset += clamp(targetOffset - state.offset, -lateralStep, lateralStep);
+      return { state, speed: Math.max(0, speed),
+        advance: Math.max(0, (state.speed + speed) * .5 * dt),
+        offset: state.offset + clamp(targetOffset - state.offset,
+          -lateralStep, lateralStep), limited: false };
+    });
+
+    // Anticipatory braking above is continuous, but sparse traffic estimates
+    // can still allow two centres to cross between 50 ms integration steps.
+    // Preserve each pair's pre-step order until it has enough lateral room to
+    // pass. This constrains the actual race state, so the renderer does not
+    // accumulate a large hidden holdback behind lapped traffic.
+    for (let pass = 0; pass < 3; pass++) {
+      for (let i = 0; i < proposals.length; i++) {
+        const a = proposals[i];
+        for (let j = i + 1; j < proposals.length; j++) {
+          const b = proposals[j];
+          const signed = wrap(progress(b.state) - progress(a.state)
+            + length / 2, length) - length / 2;
+          if (Math.abs(signed) > 25) continue;
+          const ahead = signed >= 0 ? b : a;
+          const behind = signed >= 0 ? a : b;
+          const gap = Math.abs(signed);
+          if (gap + ahead.advance - behind.advance >= CAR_LENGTH_METERS
+            || Math.abs(a.offset - b.offset) >= CAR_WIDTH_METERS) continue;
+
+          // A side-by-side pair keeps its current lanes if a proposed merge
+          // would put the two occupied rectangles in the same strip of road.
+          if (Math.abs(a.state.offset - b.state.offset) >= CAR_WIDTH_METERS) {
+            const first = Math.abs(a.offset - a.state.offset)
+              >= Math.abs(b.offset - b.state.offset) ? a : b;
+            first.offset = first.state.offset;
+            if (Math.abs(a.offset - b.offset) < CAR_WIDTH_METERS) {
+              const second = first === a ? b : a;
+              second.offset = second.state.offset;
+            }
+          }
+          if (Math.abs(a.offset - b.offset) >= CAR_WIDTH_METERS) continue;
+          const allowed = Math.max(0, gap + ahead.advance - CAR_LENGTH_METERS);
+          if (behind.advance > allowed) {
+            behind.advance = allowed;
+            behind.limited = true;
+          }
+        }
+      }
+    }
+
+    for (const proposal of proposals) {
+      const { state } = proposal;
+      const before = state.distanceMeters;
+      state.distanceMeters += proposal.advance;
+      state.speed = proposal.limited
+        ? Math.min(proposal.speed, proposal.advance / dt)
+        : proposal.speed;
+      state.offset = proposal.offset;
       const beforeProgress = state.startOffset + before;
       const afterProgress = progress(state);
       const nextControlLine = (state.lap + 1) * length - controlLineBeforeStart;

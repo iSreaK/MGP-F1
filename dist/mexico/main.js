@@ -372,7 +372,7 @@ if (renderer) {
     const selectedController = replayCars()[selected.number]?.controller;
     if (raceSection) raceSection.textContent = pause
       ? selected.speedKph > 5 ? 'Retour aux stands' : 'Course interrompue'
-      : selectedController?.stats.sectionName || 'Circuit of The Americas';
+      : selectedController?.stats.sectionName || 'Autódromo Hermanos Rodríguez';
     if (raceLapLabel) raceLapLabel.textContent = 'TOUR OFFICIEL';
     if (replayGear) replayGear.textContent = selected.gear > 0 ? String(selected.gear) : 'N';
     if (replayThrottle) replayThrottle.textContent = `${Math.round(selected.throttlePct)} %`;

@@ -1,20 +1,46 @@
+import { LANDMARKS } from './track-data.js';
+
 // Mexico City is a nearly level park circuit. Horizontal stationing follows
-// the FIA 2025 circuit map in track-data.js. These slight height changes are
-// only a smooth visual approximation: no kerb-level elevation survey was
-// available. The city's ~2,285 m altitude is a location fact, not the scene's
-// relative world-space y coordinate.
+// the FIA 2025 circuit map in track-data.js. The broad rises and falls below
+// give the road a little visible depth without turning it into a hilly track;
+// they are a smooth visual approximation, not surveyed elevation anchors.
+// The city's ~2,285 m altitude is not the scene's relative world-space y.
 
 const LAP_LENGTH = 4304;
 const BASE_Y = .36;
+const T17_APEX_METERS = LANDMARKS.turns.T17.distanceMeters;
+// The historic Peraltada was 8.5 degrees after its 1986 reconstruction;
+// only a portion survives in the post-2015 F1 lap. An 8-degree visual peak
+// retains its character without claiming a survey of the present-day asphalt.
+const T17_BANK_RADIANS = 8 * Math.PI / 180;
+const smoothstep01 = value => {
+  const t = Math.max(0, Math.min(1, value));
+  return t * t * (3 - 2 * t);
+};
+
+/** Positive roll tilts the driver's right side down through right-hand T17. */
+export function trackBankAngleAtStation(station) {
+  const distance = ((station % LAP_LENGTH) + LAP_LENGTH) % LAP_LENGTH;
+  let delta = distance - T17_APEX_METERS;
+  if (delta > LAP_LENGTH / 2) delta -= LAP_LENGTH;
+  if (delta < -LAP_LENGTH / 2) delta += LAP_LENGTH;
+  const entry = smoothstep01((delta + 105) / 75);
+  const exit = 1 - smoothstep01((delta - 16) / 65);
+  return T17_BANK_RADIANS * entry * exit;
+}
+
+export function trackBankAngleAtFraction(fraction) {
+  return trackBankAngleAtStation(fraction * LAP_LENGTH);
+}
 
 export const ELEVATION_PROFILE_METERS = Object.freeze([
   [0, 1.5],
   [230, 1.5],
-  [610, 1.62],
-  [1250, 1.34],
-  [2050, 1.55],
-  [2940, 1.27],
-  [3620, 1.43],
+  [610, 2.23],
+  [1250, 1.2],
+  [2050, 2.4],
+  [2940, .72],
+  [3620, 1.63],
   [LAP_LENGTH, 1.5],
 ]);
 

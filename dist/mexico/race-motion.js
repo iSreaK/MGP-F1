@@ -1,4 +1,5 @@
 import { TRACK_POINTS, TRACK_LENGTH_METERS, LANDMARKS } from './track-data.js';
+import { trackBankAngleAtFraction } from './geometry-smoothing.js';
 
 // Lateral path is a modest outside/apex/outside reconstruction derived from
 // the FIA corner positions. OpenF1 does not supply surveyed racing-line offsets.
@@ -188,6 +189,12 @@ export function createRaceController(THREE, curve, car, options = {}) {
   }
 
   const tangent = new THREE.Vector3();
+  const yawAxis = new THREE.Vector3(0, 1, 0);
+  const pitchAxis = new THREE.Vector3(0, 0, 1);
+  const rollAxis = new THREE.Vector3(1, 0, 0);
+  const yawQuaternion = new THREE.Quaternion();
+  const pitchQuaternion = new THREE.Quaternion();
+  const rollQuaternion = new THREE.Quaternion();
   let steeringPivots = null;
   const stats = {
     running: false,
@@ -237,33 +244,44 @@ export function createRaceController(THREE, curve, car, options = {}) {
     pointOnLine(visualU, car.position, offset);
     directionOnLine(visualU, tangent, replayOffset === null ? null : offset);
     const yaw = Math.atan2(tangent.z, -tangent.x);
+    const roll = trackBankAngleAtFraction(visualU);
     const { frontX, rearX, frontZ, rearZ, centerY, radius } = WHEEL_GEOMETRY;
     const cosYaw = Math.cos(yaw), sinYaw = Math.sin(yaw);
-    const heightUnderWheel = (wheelX, wheelZ, pitch) => {
-      // R_y(yaw) * R_z(pitch) matches the car's Euler rotation below.
-      const localX = wheelX * Math.cos(pitch) - centerY * Math.sin(pitch);
-      const x = car.position.x + localX * cosYaw + wheelZ * sinYaw;
-      const z = car.position.z - localX * sinYaw + wheelZ * cosYaw;
-      return trackHeightAt(visualU, x, z);
+    const cosRoll = Math.cos(roll), sinRoll = Math.sin(roll);
+    const sampleWheel = (wheelX, wheelZ, pitch) => {
+      // Transform each hub with R_y(yaw) * R_z(pitch) * R_x(roll), then fit the
+      // tyre bottom to the same banked road surface used by its mesh.
+      const localY = centerY * cosRoll - wheelZ * sinRoll;
+      const localZ = centerY * sinRoll + wheelZ * cosRoll;
+      const cosPitch = Math.cos(pitch), sinPitch = Math.sin(pitch);
+      const localX = wheelX * cosPitch - localY * sinPitch;
+      const x = car.position.x + localX * cosYaw + localZ * sinYaw;
+      const z = car.position.z - localX * sinYaw + localZ * cosYaw;
+      const tyreVerticalRadius = radius * Math.sqrt(1 - (sinRoll * cosPitch) ** 2);
+      return {
+        ground: trackHeightAt(visualU, x, z),
+        bottom: wheelX * sinPitch + localY * cosPitch - tyreVerticalRadius,
+      };
     };
     const axleHeights = pitch => ({
-      front: (heightUnderWheel(frontX, -frontZ, pitch) + heightUnderWheel(frontX, frontZ, pitch)) * .5,
-      rear: (heightUnderWheel(rearX, -rearZ, pitch) + heightUnderWheel(rearX, rearZ, pitch)) * .5,
+      front: (sampleWheel(frontX, -frontZ, pitch).ground
+        + sampleWheel(frontX, frontZ, pitch).ground) * .5,
+      rear: (sampleWheel(rearX, -rearZ, pitch).ground
+        + sampleWheel(rearX, rearZ, pitch).ground) * .5,
     });
     let pitch = 0;
     for (let i = 0; i < 2; i++) {
       const { front, rear } = axleHeights(pitch);
       pitch = Math.asin(clamp((rear - front) / (rearX - frontX), -.9, .9));
     }
-    const { front: frontHeight, rear: rearHeight } = axleHeights(pitch);
-    // A circular tyre's bottom is centre minus radius even when pitched.
-    // Fit both axles to the rendered road, then average their origin heights
-    // to absorb the tiny residual from longitudinal road curvature.
-    const wheelBottomAtOrigin = centerY * Math.cos(pitch) - radius;
-    const frontOrigin = frontHeight - frontX * Math.sin(pitch) - wheelBottomAtOrigin;
-    const rearOrigin = rearHeight - rearX * Math.sin(pitch) - wheelBottomAtOrigin;
-    car.position.y = (frontOrigin + rearOrigin) * .5;
-    car.rotation.set(0, yaw, pitch);
+    const wheels = [sampleWheel(frontX, -frontZ, pitch),
+      sampleWheel(frontX, frontZ, pitch),
+      sampleWheel(rearX, -rearZ, pitch),
+      sampleWheel(rearX, rearZ, pitch)];
+    car.position.y = wheels.reduce((sum, wheel) => sum + wheel.ground - wheel.bottom, 0) / 4;
+    car.quaternion.copy(yawQuaternion.setFromAxisAngle(yawAxis, yaw))
+      .multiply(pitchQuaternion.setFromAxisAngle(pitchAxis, pitch))
+      .multiply(rollQuaternion.setFromAxisAngle(rollAxis, roll));
     steerFrontWheels(visualU);
     stats.lateralOffset = offset;
     stats.sectionName = sectionAt(stats.progress);
