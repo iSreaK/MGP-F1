@@ -119,8 +119,8 @@ if (renderer) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xaac4d5);
-  scene.fog = new THREE.Fog(0xb9c9c6, 2100, 6200);
+  scene.background = new THREE.Color(0x8bb9d3);
+  scene.fog = new THREE.Fog(0xc4c9b8, 2800, 8000);
   const sky = createAustinSky(THREE, scene);
 
   const camera = new THREE.PerspectiveCamera(41, 1, 0.5, 6500);
@@ -136,7 +136,7 @@ if (renderer) {
   controls.zoomSpeed = 0.8;
   controls.rotateSpeed = 0.7;
 
-  const ambient = new THREE.HemisphereLight(0xd4e9fa, 0x5d6543, 1.42);
+  const ambient = new THREE.HemisphereLight(0xd8ecf8, 0x80745c, 1.48);
   scene.add(ambient);
   const sun = new THREE.DirectionalLight(0xffe8bd, 1.65);
   const sunOffset = new THREE.Vector3(-680, 820, 1020);
@@ -966,9 +966,9 @@ if (renderer) {
     weatherButton.setAttribute('aria-pressed', String(wetMode));
     weatherButton.setAttribute('aria-label', wetMode ? 'Désactiver la pluie et sécher la piste' : 'Activer la pluie et la piste mouillée');
     sun.intensity = wetMode ? .96 : 1.65;
-    ambient.intensity = wetMode ? 1.2 : 1.42;
+    ambient.intensity = wetMode ? 1.2 : 1.48;
     world?.trackside.setWetLighting(wetMode);
-    scene.fog.color.set(wetMode ? 0x98a8ae : 0xb9c9c6);
+    scene.fog.color.set(wetMode ? 0x98a8ae : 0xc4c9b8);
     sky.setWet(wetMode);
   });
   window.addEventListener('keydown', event => {

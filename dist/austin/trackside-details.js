@@ -280,12 +280,17 @@ export function addAustinTrackside(THREE, scene, curve, frames, landmarks, optio
       const span = halfWidth * 2 + 44;
       const bridgeRed = new THREE.MeshStandardMaterial({ color: 0xc4212e,
         metalness: .3, roughness: .5 });
-      const deck = new THREE.Mesh(new THREE.BoxGeometry(span, .8, 4.2),
-        bridgeRed);
+      const bridgeDeck = new THREE.MeshStandardMaterial({ color: 0x4b5559,
+        metalness: .22, roughness: .73 });
+      const bridgeGlass = new THREE.MeshStandardMaterial({ color: 0xa8c3c6,
+        metalness: .14, roughness: .3, transparent: true, opacity: .38,
+        side: THREE.DoubleSide, depthWrite: false });
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(span, .36, 4.2),
+        bridgeDeck);
       deck.position.y = 8.8;
       bridge.add(deck);
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(span, .7, 4.2),
-        bridgeRed);
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(span, .23, 4.2),
+        bridgeDeck);
       roof.position.y = 12.7;
       bridge.add(roof);
       for (const side of [-1, 1]) {
@@ -294,12 +299,33 @@ export function addAustinTrackside(THREE, scene, curve, frames, landmarks, optio
         column.position.set(side * (halfWidth + 21.7), 6.15, 0);
         bridge.add(column);
       }
-      for (const z of [-1.8, 1.8]) {
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(span, 1.0, .18),
-          bridgeRed);
-        rail.position.set(0, 10.15, z);
-        bridge.add(rail);
+      for (const z of [-1.95, 1.95]) {
+        const glazing = new THREE.Mesh(new THREE.PlaneGeometry(span - 2.6, 3.15),
+          bridgeGlass);
+        glazing.position.set(0, 10.75, z);
+        bridge.add(glazing);
+        for (const y of [9.1, 10.55, 12.42]) {
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(span, .16, .13),
+            bridgeRed);
+          rail.position.set(0, y, z);
+          bridge.add(rail);
+        }
       }
+      const postStations = Math.ceil(span / 4.4) + 1;
+      const bridgePosts = new THREE.InstancedMesh(
+        new THREE.BoxGeometry(.15, 3.52, .16), bridgeRed, postStations * 2);
+      bridgePosts.name = 'COTA bridge slender side frames';
+      let post = 0;
+      for (let i = 0; i < postStations; i++) for (const z of [-1.95, 1.95]) {
+        helper.position.set(-span / 2 + i * span / (postStations - 1),
+          10.75, z);
+        helper.quaternion.identity();
+        helper.scale.set(1, 1, 1);
+        helper.updateMatrix();
+        bridgePosts.setMatrixAt(post++, helper.matrix);
+      }
+      bridgePosts.instanceMatrix.needsUpdate = true;
+      bridge.add(bridgePosts);
       group.add(bridge);
     }
   }

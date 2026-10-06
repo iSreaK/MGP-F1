@@ -25,6 +25,58 @@ function seededRandom(seed) {
   return () => ((value = Math.imul(value, 1664525) + 1013904223 >>> 0) / 4294967296);
 }
 
+function hash2D(x, z) {
+  let value = Math.imul(x, 374761393) ^ Math.imul(z, 668265263) ^ 0x51a7c07a;
+  value = Math.imul(value ^ value >>> 13, 1274126177);
+  return ((value ^ value >>> 16) >>> 0) / 4294967296;
+}
+
+function valueNoise(x, z) {
+  const ix = Math.floor(x), iz = Math.floor(z);
+  const fx = smoothstep(x - ix), fz = smoothstep(z - iz);
+  const a = hash2D(ix, iz) * (1 - fx) + hash2D(ix + 1, iz) * fx;
+  const b = hash2D(ix, iz + 1) * (1 - fx) + hash2D(ix + 1, iz + 1) * fx;
+  return a * (1 - fz) + b * fz;
+}
+
+// A small seamless ground tile supplies the dry grass and exposed caliche
+// detail seen close to the road. The larger meadow/soil areas come from
+// terrain vertex colours, so repetition is not apparent in the aerial view.
+function prairieTexture(THREE) {
+  const random = seededRandom(122019);
+  const size = 512;
+  return textureFromPixels(THREE, size, (ctx) => {
+    const pixels = ctx.createImageData(size, size);
+    const tileNoise = (x, z, cells) => {
+      const ix = Math.floor(x), iz = Math.floor(z);
+      const fx = smoothstep(x - ix), fz = smoothstep(z - iz);
+      const h = (dx, dz) => hash2D((ix + dx + cells) % cells,
+        (iz + dz + cells) % cells);
+      return (h(0, 0) * (1 - fx) + h(1, 0) * fx) * (1 - fz)
+        + (h(0, 1) * (1 - fx) + h(1, 1) * fx) * fz;
+    };
+    for (let z = 0; z < size; z++) for (let x = 0; x < size; x++) {
+      const broad = tileNoise(x * 8 / size, z * 8 / size, 8);
+      const fine = tileNoise(x * 32 / size, z * 32 / size, 32);
+      const grain = random() - .5;
+      const brightness = 226 + (broad - .5) * 32 + (fine - .5) * 19
+        + grain * 24;
+      const index = (z * size + x) * 4;
+      pixels.data[index] = brightness + 3;
+      pixels.data[index + 1] = brightness + 2;
+      pixels.data[index + 2] = brightness - 5;
+      pixels.data[index + 3] = 255;
+    }
+    ctx.putImageData(pixels, 0, 0);
+    for (let i = 0; i < 10500; i++) {
+      const dark = random() < .62;
+      ctx.fillStyle = dark ? 'rgba(43,56,28,.23)' : 'rgba(238,218,164,.31)';
+      ctx.fillRect(random() * size, random() * size,
+        .45 + random() * 1.4, .6 + random() * 3.4);
+    }
+  });
+}
+
 function asphaltTexture(THREE) {
   const random = seededRandom(2075);
   return textureFromPixels(THREE, 384, (ctx, size) => {
@@ -86,7 +138,8 @@ function createRibbon(THREE, scene, name, frames, distances, from, to, material,
     const toB = typeof to === 'function' ? to(nextU) : to;
     const first = positions.length / 3;
     for (const [frame, offset] of [[a, fromA], [a, toA], [b, fromB], [b, toB]]) {
-      positions.push(frame.point.x + frame.across.x * offset, frame.point.y + height,
+      const lift = typeof height === 'function' ? height(frame, offset) : height;
+      positions.push(frame.point.x + frame.across.x * offset, frame.point.y + lift,
         frame.point.z + frame.across.z * offset);
       normals.push(0, 1, 0);
     }
@@ -120,27 +173,86 @@ function smoothstep(value) {
   return t * t * (3 - 2 * t);
 }
 
+function terrainHeightSampler(terrain) {
+  const points = terrain.geometry.getAttribute('position');
+  const z0 = points.getZ(0);
+  let columns = 1;
+  while (columns < points.count && Math.abs(points.getZ(columns) - z0) < .001)
+    columns++;
+  const rows = points.count / columns;
+  const x0 = points.getX(0), stepX = points.getX(1) - x0;
+  const stepZ = points.getZ(columns) - z0;
+  return (x, z, fallback) => {
+    const ux = (x - x0) / stepX, uz = (z - z0) / stepZ;
+    if (ux < 0 || ux > columns - 1 || uz < 0 || uz > rows - 1)
+      return fallback;
+    const ix = Math.min(columns - 2, Math.floor(ux));
+    const iz = Math.min(rows - 2, Math.floor(uz));
+    const tx = ux - ix, tz = uz - iz;
+    const a = iz * columns + ix;
+    const y00 = points.getY(a), y10 = points.getY(a + 1);
+    const y01 = points.getY(a + columns);
+    const y11 = points.getY(a + columns + 1);
+    // Match the actual mesh diagonal (top-right to bottom-left). Bilinear
+    // interpolation left gaps of up to 20 cm over uneven Texas ground.
+    return tx + tz <= 1
+      ? y00 * (1 - tx - tz) + y10 * tx + y01 * tz
+      : y10 * (1 - tz) + y01 * (1 - tx) + y11 * (tx + tz - 1);
+  };
+}
+
 // The terrain follows the elevated road without cutting through the tarmac.
-// A coarse mesh is enough for the open Texas landscape and limits draw cost.
+// Its continuous, coarse-scale colours model COTA's mown infield, dry prairie
+// and exposed soil. One small tiled texture handles close ground detail.
 function addRollingTerrain(THREE, scene, samples) {
   const measured = samples.filter((_, index) => index % 19 === 0);
   const box = new THREE.Box3().setFromPoints(samples);
-  const margin = 390;
+  const margin = 450;
   const minX = box.min.x - margin, maxX = box.max.x + margin;
   const minZ = box.min.z - margin, maxZ = box.max.z + margin;
-  const nx = Math.ceil((maxX - minX) / 26);
-  const nz = Math.ceil((maxZ - minZ) / 26);
+  const nx = Math.ceil((maxX - minX) / 21);
+  const nz = Math.ceil((maxZ - minZ) / 21);
   const stepX = (maxX - minX) / nx, stepZ = (maxZ - minZ) / nz;
   const base = Math.min(...measured.map(point => point.y)) - 5;
-  const plainColor = new THREE.Color().setRGB(.24 * .82, .37 * .82, .20 * .82);
-  const plain = new THREE.Mesh(new THREE.PlaneGeometry(18000, 18000),
-    new THREE.MeshStandardMaterial({ color: plainColor, roughness: 1 }));
+  const plainRGB = [.345, .375, .235];
+  const plainColor = new THREE.Color().setRGB(...plainRGB);
+  const groundMap = prairieTexture(THREE);
+  const tileMetres = 68;
+  const centreX = (minX + maxX) / 2, centreZ = (minZ + maxZ) / 2;
+  const textureLeft = centreX - 9000, textureTop = centreZ + 9000;
+  // Matching world-space UVs keep the local terrain and distant ground in
+  // phase, avoiding the rectangular seam visible from the overview camera.
+  // The near terrain still meets a flat datum at its outer edge. Farther
+  // away, broad low hills break the artificial level horizon. Their envelope
+  // stays at zero for two far-mesh cells beyond that edge, so no triangle can
+  // introduce a raised rectangular seam where the meshes overlap.
+  const plainGeometry = new THREE.PlaneGeometry(18000, 18000, 120, 120);
+  const plainPositions = plainGeometry.getAttribute('position');
+  const plainUV = plainGeometry.getAttribute('uv');
+  for (let i = 0; i < plainPositions.count; i++) {
+    const x = centreX + plainPositions.getX(i);
+    const z = centreZ - plainPositions.getY(i);
+    const outsideX = Math.max(minX - x, 0, x - maxX);
+    const outsideZ = Math.max(minZ - z, 0, z - maxZ);
+    const distanceOutside = Math.hypot(outsideX, outsideZ);
+    const distantBlend = smoothstep((distanceOutside - 320) / 1250);
+    const hills = (valueNoise(x / 2150 + 14, z / 2150 - 7) - .35) * 36
+      + (valueNoise(x / 790 - 8, z / 790 + 23) - .5) * 9;
+    // PlaneGeometry starts in XY; after its -90° rotation, local Z is world Y.
+    plainPositions.setZ(i, distantBlend * Math.max(-10, hills));
+    plainUV.setXY(i, (x - textureLeft) / tileMetres,
+      (textureTop - z) / tileMetres);
+  }
+  plainGeometry.computeVertexNormals();
+  const plain = new THREE.Mesh(plainGeometry,
+    new THREE.MeshStandardMaterial({ color: plainColor, map: groundMap,
+      roughness: 1 }));
   plain.name = 'Texas landscape to the horizon';
   plain.rotation.x = -Math.PI / 2;
-  plain.position.set((minX + maxX) / 2, base - .035, (minZ + maxZ) / 2);
+  plain.position.set(centreX, base - .035, centreZ);
   plain.receiveShadow = true;
   scene.add(plain);
-  const positions = [], colors = [], indices = [];
+  const positions = [], colors = [], uvs = [], indices = [];
   for (let iz = 0; iz <= nz; iz++) for (let ix = 0; ix <= nx; ix++) {
     const x = minX + ix * stepX, z = minZ + iz * stepZ;
     let distanceSquared = Infinity;
@@ -159,16 +271,35 @@ function addRollingTerrain(THREE, scene, samples) {
     }
     const distance = Math.sqrt(distanceSquared);
     const edgeDistance = Math.min(x - minX, maxX - x, z - minZ, maxZ - z);
-    const edgeFade = smoothstep(edgeDistance / 145);
-    const undulation = (Math.sin(x * .0041) * Math.cos(z * .0037) * 1.6
-      + Math.sin((x + z) * .0022)) * edgeFade;
+    const edgeFade = smoothstep(edgeDistance / 165);
+    const ridge = (valueNoise(x / 410, z / 410) - .5) * 8.4
+      + (valueNoise(x / 170 + 8, z / 170 - 11) - .5) * 2.4;
+    const undulation = ridge * edgeFade;
     const far = base + undulation;
-    const bank = nearHeight - .72 - Math.min(8, Math.max(0, distance - 14) * .039);
+    const bank = nearHeight - 1.08 - Math.min(8, Math.max(0, distance - 14) * .039);
     const following = 1 - smoothstep((distance - 14) / 270);
     positions.push(x, far * (1 - following) + bank * following, z);
-    const tint = .82 + edgeFade * (.14 * Math.sin(x * .007 + z * .011)
-      + .06 * Math.cos(z * .019));
-    colors.push(.24 * tint, .37 * tint, .20 * tint);
+    uvs.push((x - textureLeft) / tileMetres,
+      (textureTop - z) / tileMetres);
+    const meadow = valueNoise(x / 275 + 19, z / 275 - 6) * .61
+      + valueNoise(x / 88 - 13, z / 88 + 9) * .39;
+    const green = smoothstep((meadow - .28) / .45);
+    const soil = smoothstep((valueNoise(x / 162 + 71,
+      z / 162 - 29) - .55) / .22);
+    // Mown grass beside the racing surface grades into tawny grass and
+    // caliche-coloured exposed patches away from the verge.
+    const verge = (1 - smoothstep((distance - 18) / 105)) * edgeFade;
+    const earth = soil * (1 - verge * .72);
+    let r = .445 * (1 - green) + .282 * green;
+    let g = .358 * (1 - green) + .420 * green;
+    let b = .212 * (1 - green) + .204 * green;
+    r = r * (1 - earth * .58) + .515 * earth * .58 - verge * .028;
+    g = g * (1 - earth * .58) + .307 * earth * .58 + verge * .033;
+    b = b * (1 - earth * .58) + .174 * earth * .58;
+    colors.push(
+      plainRGB[0] * (1 - edgeFade) + r * edgeFade,
+      plainRGB[1] * (1 - edgeFade) + g * edgeFade,
+      plainRGB[2] * (1 - edgeFade) + b * edgeFade);
     if (ix < nx && iz < nz) {
       const a = iz * (nx + 1) + ix, b = a + nx + 1;
       indices.push(a, b, a + 1, a + 1, b, b + 1);
@@ -177,10 +308,12 @@ function addRollingTerrain(THREE, scene, samples) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   const mesh = new THREE.Mesh(geometry,
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }));
+    new THREE.MeshStandardMaterial({ vertexColors: true, map: groundMap,
+      roughness: 1, side: THREE.DoubleSide }));
   mesh.name = 'COTA rolling Texas terrain';
   mesh.receiveShadow = true;
   scene.add(mesh);
@@ -208,9 +341,12 @@ export function createAustinWorld(THREE, scene) {
   // Preserve straight road edges; an invented varying width introduces waves.
   const roadHalfWidthAt = () => half;
 
-  addRollingTerrain(THREE, scene, samples);
+  const terrain = addRollingTerrain(THREE, scene, samples);
+  const terrainHeightAt = terrainHeightSampler(terrain);
 
   const shoulder = new THREE.MeshStandardMaterial({ color: 0x485057, roughness: .94, side: THREE.DoubleSide });
+  const grassVerge = new THREE.MeshStandardMaterial({ map: terrain.material.map,
+    color: 0x859168, roughness: 1, side: THREE.DoubleSide });
   const asphalt = new THREE.MeshStandardMaterial({ map: asphaltTexture(THREE), color: 0xd8d9d9,
     roughness: .91, metalness: .015, side: THREE.DoubleSide });
   const white = new THREE.MeshBasicMaterial({ color: 0xe9e8e2, side: THREE.DoubleSide });
@@ -223,8 +359,29 @@ export function createAustinWorld(THREE, scene) {
   const overviewAccent = new THREE.MeshBasicMaterial({ color: 0x3f6986, transparent: true,
     opacity: 0, depthWrite: false, side: THREE.DoubleSide });
 
+  // Most COTA straights have a narrow paved edge followed by grass before
+  // the catch fence. The old 11 m asphalt shoulder on both sides read as one
+  // enormous grey slab, especially from the T1 approach camera.
+  const vergeHeight = (frame, offset) => {
+    const x = frame.point.x + frame.across.x * offset;
+    const z = frame.point.z + frame.across.z * offset;
+    const ground = terrainHeightAt(x, z, frame.point.y - 1.08);
+    const blend = smoothstep((Math.abs(offset) - half - 4.6) / 6.4);
+    const y = (frame.point.y - .16) * (1 - blend)
+      + (ground + .045) * blend;
+    return y - frame.point.y;
+  };
   createRibbon(THREE, scene, 'COTA paved shoulder', frames, distances,
-    -half - 11, half + 11, shoulder, { height: -.16, repeatMetres: 18 });
+    -half - 4.6, half + 4.6, shoulder, { height: -.16, repeatMetres: 18 });
+  for (const [name, side] of [['left', -1], ['right', 1]]) {
+    for (const [index, a, b] of [[1, 4.6, 7.8], [2, 7.8, 11]]) {
+      createRibbon(THREE, scene, `COTA ${name} mown safety verge ${index}`,
+        frames, distances, side < 0 ? -(half + b) : half + a,
+        side < 0 ? -(half + a) : half + b,
+        grassVerge,
+        { height: vergeHeight, repeatMetres: 18 });
+    }
+  }
   createRibbon(THREE, scene, 'Overview circuit silhouette', frames, distances,
     -half - 5.5, half + 5.5, overviewAccent, { height: .009 });
   createRibbon(THREE, scene, 'Circuit of The Americas racing surface', frames, distances,
@@ -248,17 +405,24 @@ export function createAustinWorld(THREE, scene) {
     const side = clockwise ? 1 : -1;
     const include = t => Math.abs(wrappedDelta(t, u)) * TRACK_LENGTH_METERS < (corner === 1 ? 85 : 46);
     const outside = -side;
+    const orderedOffsets = (sign, near, far) => {
+      const at = distance => t => sign * (roadHalfWidthAt(t) + distance);
+      return sign < 0 ? [at(far), at(near)] : [at(near), at(far)];
+    };
+    const [runoffFrom, runoffTo] = orderedOffsets(outside, .75,
+      corner === 1 || corner === 12 ? 35 : 19);
     createRibbon(THREE, scene, `COTA turn ${corner} paved runoff`, frames, distances,
-      t => outside * (roadHalfWidthAt(t) + .75),
-      t => outside * (roadHalfWidthAt(t) + (corner === 1 || corner === 12 ? 35 : 19)),
+      runoffFrom, runoffTo,
       blueRunoff, { include, height: -.037 });
+    const [stripeFrom, stripeTo] = orderedOffsets(outside,
+      corner === 1 || corner === 12 ? 22 : 12,
+      corner === 1 || corner === 12 ? 25 : 14);
     createRibbon(THREE, scene, `COTA turn ${corner} red runoff stripe`, frames, distances,
-      t => outside * (roadHalfWidthAt(t) + (corner === 1 || corner === 12 ? 22 : 12)),
-      t => outside * (roadHalfWidthAt(t) + (corner === 1 || corner === 12 ? 25 : 14)),
+      stripeFrom, stripeTo,
       redRunoff, { include, height: -.023 });
+    const [kerbFrom, kerbTo] = orderedOffsets(side, .025, 1.05);
     createRibbon(THREE, scene, `Turn ${corner} striped inside kerb`, frames, distances,
-      t => side * (roadHalfWidthAt(t) + .025),
-      t => side * (roadHalfWidthAt(t) + 1.05), curb,
+      kerbFrom, kerbTo, curb,
       { include, height: .027, repeatMetres: 3.2 });
   }
 

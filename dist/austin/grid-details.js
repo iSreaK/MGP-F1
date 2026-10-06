@@ -81,8 +81,11 @@ export function addAustinGridDetails(THREE, scene, curve, polyline, landmarks,
   const steel = new THREE.MeshStandardMaterial({ color: 0x29343a, metalness: .4, roughness: .55 });
   const glass = new THREE.MeshStandardMaterial({ color: 0x1f3949, metalness: .48,
     roughness: .22, emissive: 0x142632, emissiveIntensity: .46 });
-  const roof = new THREE.MeshStandardMaterial({ color: 0xb7bdc0, roughness: .72 });
-  const garage = new THREE.MeshStandardMaterial({ color: 0x707c84, metalness: .28, roughness: .67 });
+  const roof = new THREE.MeshStandardMaterial({ color: 0xd1d2c9, roughness: .72 });
+  const garage = new THREE.MeshStandardMaterial({ color: 0x879296, metalness: .28, roughness: .67 });
+  const paleConcrete = new THREE.MeshStandardMaterial({ color: 0xc7c1b2, roughness: .88 });
+  const darkFascia = new THREE.MeshStandardMaterial({ color: 0x25343b, metalness: .32, roughness: .56 });
+  const redAccent = new THREE.MeshStandardMaterial({ color: 0xb8222c, roughness: .62 });
   const light = new THREE.MeshBasicMaterial({ color: 0xfff4d5 });
 
   // Reconstruct the lane alongside the start/finish straight. Its two tapers
@@ -227,8 +230,8 @@ export function addAustinGridDetails(THREE, scene, curve, polyline, landmarks,
   // The permanent F1 Pit Building occupies the driver's left side of the straight.
   // Repeated bay geometry keeps its garage rhythm readable without dozens of
   // separate draw calls; the exact facade is a stylised reconstruction.
-  const bayLength = 10.8;
-  const bays = Array.from({ length: 35 }, (_, i) => -215 + i * bayLength);
+  const bayLength = 11.1;
+  const bays = Array.from({ length: 34 }, (_, i) => -215 + i * bayLength);
   instanceBoxes('Austin pit garage concrete bays', [16.8, 6.2, bayLength + .2],
     wall, bays, -halfWidth - 29.0, 3.1);
   instanceBoxes('Pit garage roller shutters', [.12, 4.8, bayLength - 1.1],
@@ -241,6 +244,77 @@ export function addAustinGridDetails(THREE, scene, curve, polyline, landmarks,
     light, bays, -halfWidth - 20.15, 5.9);
   instanceBoxes('Pit building dark fascia', [.48, .55, bayLength + .1],
     steel, bays, -halfWidth - 19.85, 10.0);
+
+  // The COTA paddock is a long 34-garage hospitality building, not a single
+  // blank block. Door seams, vertical piers, balcony rails and rooftop plant
+  // are instanced so the near-camera facade has detail without 300 draw calls.
+  const bayBoundaries = Array.from({ length: bays.length + 1 },
+    (_, i) => bays[0] - bayLength / 2 + i * bayLength);
+  instanceBoxes('Garage facade pale piers', [.44, 6.05, .46],
+    paleConcrete, bayBoundaries, -halfWidth - 20.43, 3.08);
+  for (const y of [1.12, 2.15, 3.18, 4.21]) {
+    instanceBoxes('Garage shutter horizontal ribs', [.06, .055, bayLength - 1.05],
+      darkFascia, bays, -halfWidth - 20.39, y);
+  }
+  instanceBoxes('Garage head fascia', [.25, .72, bayLength - .35],
+    darkFascia, bays, -halfWidth - 20.27, 5.53);
+  instanceBoxes('Paddock balcony floor slabs', [3.1, .25, bayLength + .04],
+    paleConcrete, bays, -halfWidth - 21.0, 6.45);
+  instanceBoxes('Paddock hospitality balcony glazing', [.17, 1.13, bayLength - .35],
+    glass, bays, -halfWidth - 19.55, 7.13);
+  instanceBoxes('Paddock balcony posts', [.20, 1.2, .18],
+    steel, bayBoundaries, -halfWidth - 19.55, 7.15);
+  instanceBoxes('Paddock upper facade mullions', [.22, 3.42, .25],
+    steel, bayBoundaries, -halfWidth - 20.48, 8.2);
+  instanceBoxes('Paddock upper window belt', [.20, .22, bayLength - .25],
+    paleConcrete, bays, -halfWidth - 20.4, 8.45);
+  instanceBoxes('Paddock roof red edge', [.31, .23, bayLength + .05],
+    redAccent, bays, -halfWidth - 19.45, 10.86);
+  instanceBoxes('Paddock roof parapet', [.38, .85, bayLength + .05],
+    paleConcrete, bays, -halfWidth - 19.25, 11.25);
+  instanceBoxes('Paddock rooftop service housings', [3.5, 1.12, 3.8],
+    roof, bays.filter((_, index) => index % 5 === 2), -halfWidth - 34.0, 11.27);
+
+  const pitBoxLines = [];
+  for (const station of bays) {
+    const wallSide = -halfWidth - 20.43;
+    const fastSide = pitFarEdge - .34;
+    pitBoxLines.push([station - 4.55, station - 4.45, wallSide, fastSide]);
+    pitBoxLines.push([station + 4.45, station + 4.55, wallSide, fastSide]);
+    pitBoxLines.push([station - 4.55, station + 4.55, fastSide - .06,
+      fastSide + .04]);
+  }
+  flatQuads('COTA pit box working-area outlines', white, pitBoxLines, .012);
+
+  const signCanvas = document.createElement('canvas');
+  signCanvas.width = 1024;
+  signCanvas.height = 160;
+  const signContext = signCanvas.getContext('2d');
+  signContext.fillStyle = '#172934';
+  signContext.fillRect(0, 0, 1024, 160);
+  signContext.fillStyle = '#c92f31';
+  signContext.fillRect(0, 0, 18, 160);
+  signContext.font = 'italic 900 99px Arial, sans-serif';
+  signContext.fillStyle = '#f3f4eb';
+  signContext.fillText('COTA', 65, 113);
+  signContext.font = '700 31px Arial, sans-serif';
+  signContext.fillText('CIRCUIT OF THE AMERICAS', 420, 101);
+  const signTexture = new THREE.CanvasTexture(signCanvas);
+  signTexture.colorSpace = THREE.SRGBColorSpace;
+  const signMaterial = new THREE.MeshBasicMaterial({ map: signTexture,
+    side: THREE.DoubleSide });
+  const signGeometry = new THREE.PlaneGeometry(9.45, 1.28);
+  for (let index = 2; index < bays.length; index += 6) {
+    const frame = frameAt(bays[index]);
+    const sign = new THREE.Mesh(signGeometry, signMaterial);
+    sign.name = 'Circuit of The Americas garage fascia sign';
+    sign.position.copy(frame.point).addScaledVector(frame.across,
+      -halfWidth - 20.09);
+    sign.position.y += 5.55;
+    sign.quaternion.copy(frame.quaternion);
+    sign.rotateY(Math.PI / 2);
+    group.add(sign);
+  }
 
   // Retaining wall between race road and pit fast lane. The merge taper at
   // each end stays open, and every block follows the road elevation.
@@ -259,6 +333,25 @@ export function addAustinGridDetails(THREE, scene, curve, polyline, landmarks,
   const beam = new THREE.Mesh(new THREE.BoxGeometry(halfWidth * 2 + 5.6, .72, .55), steel);
   beam.position.y = 8.2;
   gantry.add(beam);
+  const gantryCanvas = document.createElement('canvas');
+  gantryCanvas.width = 1024;
+  gantryCanvas.height = 96;
+  const gantryContext = gantryCanvas.getContext('2d');
+  gantryContext.fillStyle = '#182939';
+  gantryContext.fillRect(0, 0, 1024, 96);
+  gantryContext.fillStyle = '#ffffff';
+  gantryContext.font = 'italic 800 65px Arial, sans-serif';
+  gantryContext.textAlign = 'center';
+  gantryContext.fillText('MSC CRUISES', 512, 69);
+  const gantryTexture = new THREE.CanvasTexture(gantryCanvas);
+  gantryTexture.colorSpace = THREE.SRGBColorSpace;
+  const gantryFace = new THREE.Mesh(
+    new THREE.PlaneGeometry(halfWidth * 2 + 5.1, .62),
+    new THREE.MeshBasicMaterial({ map: gantryTexture, side: THREE.DoubleSide }));
+  gantryFace.name = '2025 Austin start gantry sponsor banner';
+  gantryFace.position.set(0, 8.2, -.29);
+  gantryFace.rotation.y = Math.PI;
+  gantry.add(gantryFace);
   for (const side of [-1, 1]) {
     const column = new THREE.Mesh(new THREE.BoxGeometry(.38, 8.1, .38), steel);
     column.position.set(side * (halfWidth + 2.3), 4.05, 0);
