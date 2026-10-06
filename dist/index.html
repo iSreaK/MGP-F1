@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#080d16" />
     <title>Monoplaces 2026 · Garage 3D interactif</title>
-    <meta name="description" content="Explorez en 3D les monoplaces 2026 et leurs pilotes, puis parcourez Monza, Singapour et Austin." />
+    <meta name="description" content="Explorez en 3D les monoplaces 2026 et leurs pilotes, puis parcourez Monza, Singapour, Austin et Mexico." />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23080d16'/%3E%3Cpath d='M10 42 35 15h12L26 42Z' fill='%23ffcc25'/%3E%3Cpath d='M25 48 46 23l8 8-16 17Z' fill='%23e31d2e'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./circuit-menu.css" />
+    <script defer src="./circuit-menu.js"></script>
     <script type="importmap">
       {
         "imports": {
@@ -29,12 +31,20 @@
             <h1><span id="model-name">RB22</span> <span>2026</span></h1>
           </div>
         </div>
-        <div class="masthead-actions">
-          <a class="scene-link" href="./monza/">Monza</a>
-          <a class="scene-link" href="./singapore/">Singapour</a>
-          <a class="scene-link" href="./austin/">Austin</a>
-          <a class="scene-link" href="./mexico/">Mexico</a>
-        </div>
+        <nav class="masthead-actions" aria-label="Circuits du site">
+          <details class="circuit-menu">
+            <summary class="circuit-menu__toggle">
+              <span class="circuit-menu__copy"><span class="circuit-menu__eyebrow">CIRCUITS · 4</span><strong class="circuit-menu__current">Choisir un circuit</strong></span>
+              <span class="circuit-menu__chevron" aria-hidden="true"></span>
+            </summary>
+            <div class="circuit-menu__panel">
+              <a id="monza-circuit-link" href="./monza/"><span class="circuit-menu__number">01</span><span class="circuit-menu__place"><strong>Monza</strong><small>Italie · 5,793 km</small></span></a>
+              <a href="./singapore/"><span class="circuit-menu__number">02</span><span class="circuit-menu__place"><strong>Singapour</strong><small>Marina Bay · 4,927 km</small></span></a>
+              <a href="./austin/"><span class="circuit-menu__number">03</span><span class="circuit-menu__place"><strong>Austin</strong><small>États-Unis · 5,513 km</small></span></a>
+              <a href="./mexico/"><span class="circuit-menu__number">04</span><span class="circuit-menu__place"><strong>Mexico</strong><small>Mexique · 4,304 km</small></span></a>
+            </div>
+          </details>
+        </nav>
       </header>
 
       <details class="garage" open>
