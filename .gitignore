@@ -8,3 +8,15 @@ scripts/mexico/*.png
 scripts/singapore/*.png
 scripts/singapore/*.pdf
 scripts/singapore/marina_bay-source.svg
+scripts/interlagos/*.pdf
+scripts/interlagos/*.png
+scripts/interlagos/__pycache__/
+scripts/las-vegas/*.pdf
+scripts/las-vegas/*.png
+scripts/las-vegas/__pycache__/
+scripts/lusail/*.pdf
+scripts/lusail/*.png
+scripts/lusail/__pycache__/
+scripts/interlagos-replay/raw/
+scripts/las-vegas-replay/raw/
+scripts/lusail-replay/raw/
