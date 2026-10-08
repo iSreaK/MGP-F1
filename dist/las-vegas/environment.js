@@ -1,4 +1,5 @@
 import { TRACK_LENGTH_METERS } from './track-data.js';
+import { addVegasVenueDetails } from './venue-details.js';
 
 // Recognisable Las Vegas landmarks are architectural abstractions at safe
 // stand-offs from the FIA road. The FIA map supplies the circuit, not a 3D
@@ -157,6 +158,9 @@ export function addVegasEnvironment(THREE, scene, curve, frames) {
     distance: 116, depth: 44, length: 76, height: 73,
     color: 0x8b9ab2, glass: 'cool', accent: '#b9d9ff' });
 
+  const cosmopolitan = hotel({ name: 'COSMOPOLITAN', station: 5010, side: 1,
+    distance: 151, depth: 47, length: 76, height: 126,
+    color: 0x516273, glass: 'cool', accent: '#b8e5f5' });
   // A race camera sees these illuminated hotel pylons close to the Strip.
   // Their surveyed building footprints are unknown; the site check leaves
   // more than 27 m of clear space beyond each sign's edge.
@@ -166,6 +170,7 @@ export function addVegasEnvironment(THREE, scene, curve, frames) {
     ['CAESARS PALACE', 4550, 1, '#f4e4b8'],
     ['BELLAGIO', 4800, 1, '#f7d7a2'],
     ['PARIS', 4980, -1, '#afd6ff'],
+    ['COSMOPOLITAN', 5010, 1, '#a9e4f4'],
   ];
   for (const [label, station, side, accent] of pylons) {
     const anchor = site(station, side, 48, 16);
@@ -319,7 +324,7 @@ export function addVegasEnvironment(THREE, scene, curve, frames) {
   if (venetian) {
     const tower = new THREE.Group();
     tower.name = 'Venetian-style campanile silhouette';
-    tower.position.set(venetian.roadX - venetian.side * 8, 97, -32);
+    tower.position.set(venetian.roadX - venetian.side * 8, 0, -32);
     const base = new THREE.Mesh(new THREE.BoxGeometry(12, 61, 12), pearl);
     base.position.y = 30.5;
     tower.add(base);
@@ -399,7 +404,7 @@ export function addVegasEnvironment(THREE, scene, curve, frames) {
   }
 
   // Secondary casinos and city blocks, batched into two instanced draw calls.
-  const masses = [], windows = [];
+  const masses = [], windows = [], endWindows = [];
   for (let station = 130; station < TRACK_LENGTH_METERS; station += 112) {
     for (const side of [-1, 1]) {
       if (side === 1 && station > 1620 && station < 2260) continue;
@@ -412,6 +417,13 @@ export function addVegasEnvironment(THREE, scene, curve, frames) {
         Math.hypot(depth, length) / 2);
       if (!anchor) continue;
       masses.push({ anchor, depth, length, height, tint: random() });
+      for (let floor = 0; floor < Math.min(9, height / 6); floor++) {
+        for (let column = 0; column < Math.min(5, depth / 9); column++) {
+          if (random() < .38) continue;
+          for (const face of [-1, 1])
+            endWindows.push({ anchor, depth, length, height, floor, column, face });
+        }
+      }
       for (let floor = 0; floor < Math.min(10, height / 5); floor++) {
         for (let column = 0; column < Math.min(8, length / 8); column++) {
           if (random() < .27) continue;
@@ -474,42 +486,48 @@ export function addVegasEnvironment(THREE, scene, curve, frames) {
   litWindows.name = 'Instanced city window lights';
   group.add(litWindows);
 
-  // Grand Prix Plaza opposite the garage: raised seating with real supports.
-  const grandstandSite = site(6085, 1, 47, 38);
-  if (grandstandSite) {
-    const stand = new THREE.Group();
-    stand.name = 'Grand Prix Plaza main grandstand, tiers and supports';
-    stand.position.copy(grandstandSite.point);
-    stand.quaternion.copy(grandstandSite.quaternion);
-    group.add(stand);
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(24, 1.2, 74), darkRoof);
-    floor.position.y = 4;
-    stand.add(floor);
-    const tierMat = new THREE.MeshStandardMaterial({ color: 0xb3b7c0,
-      roughness: .87 });
-    for (let tier = 0; tier < 8; tier++) {
-      const seats = new THREE.Mesh(new THREE.BoxGeometry(2.8, .7, 72),
-        tier % 3 === 0 ? warmSign : tierMat);
-      seats.position.set(-10 + tier * 2.8, 5 + tier * 1.2, 0);
-      stand.add(seats);
-    }
-    const legs = new THREE.InstancedMesh(new THREE.BoxGeometry(.65, 1, .65),
-      darkRoof, 12);
-    for (let i = 0; i < 12; i++) {
-      const x = i % 2 ? 9 : -9;
-      const z = -32 + Math.floor(i / 2) * 13;
-      helper.position.set(x, 3.5, z);
-      helper.quaternion.identity();
-      helper.scale.set(1, 7, 1);
+  // The approach to the grid shows building end walls, not their long sides.
+  // Light both orientations so near-camera city volumes do not become blank slabs.
+  const endLights = new THREE.InstancedMesh(new THREE.BoxGeometry(2.4, 1.7, .14),
+    coolGlass, endWindows.length);
+  endWindows.forEach(({ anchor, depth, length, floor, column, face }, index) => {
+    const local = new THREE.Vector3(-depth / 2 + 4 + column * 8,
+      4.5 + floor * 5, face * (length / 2 + .1));
+    helper.position.copy(local.applyQuaternion(anchor.quaternion).add(anchor.point));
+    helper.quaternion.copy(anchor.quaternion);
+    helper.scale.set(1, 1, 1);
+    helper.updateMatrix();
+    endLights.setMatrixAt(index, helper.matrix);
+    const lit = random();
+    endLights.setColorAt(index, new THREE.Color(lit < .1 ? 0x233043
+      : lit < .53 ? 0xffd1a2 : lit < .83 ? 0xa9dffe : 0xffaedc));
+  });
+  endLights.instanceMatrix.needsUpdate = true;
+  if (endLights.instanceColor) endLights.instanceColor.needsUpdate = true;
+  endLights.name = 'Instanced illuminated end-wall windows';
+  group.add(endLights);
+  const facadeEdges = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }),
+    masses.length * 4);
+  masses.forEach(({ anchor, depth, length, height, tint }, index) => {
+    for (const face of [-1, 1]) for (const side of [-1, 1]) {
+      const local = new THREE.Vector3(side * (depth / 2 - .4), height / 2,
+        face * (length / 2 + .16));
+      helper.position.copy(local.applyQuaternion(anchor.quaternion).add(anchor.point));
+      helper.quaternion.copy(anchor.quaternion);
+      helper.scale.set(.25, height * .92, .2);
       helper.updateMatrix();
-      legs.setMatrixAt(i, helper.matrix);
+      const slot = index * 4 + (face + 1) + (side + 1) / 2;
+      facadeEdges.setMatrixAt(slot, helper.matrix);
+      facadeEdges.setColorAt(slot, new THREE.Color(tint > .64 ? 0x7faaf5
+        : tint > .3 ? 0xf2a0d3 : 0xf3cd94));
     }
-    legs.instanceMatrix.needsUpdate = true;
-    stand.add(legs);
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(30, .9, 80), darkRoof);
-    roof.position.y = 16.5;
-    stand.add(roof);
-  }
-  return { group, landmarkCount: 7, skylineBlocks: masses.length,
+  });
+  facadeEdges.instanceMatrix.needsUpdate = true;
+  if (facadeEdges.instanceColor) facadeEdges.instanceColor.needsUpdate = true;
+  facadeEdges.name = 'Instanced vertical resort facade light edges';
+  group.add(facadeEdges);
+  const venueDetails = addVegasVenueDetails(THREE, group, frames, frameAt, nearRoad, site, textTexture);
+  return { group, venueDetails, landmarkCount: 9, skylineBlocks: masses.length,
     minimumStaticClearanceMetres: 27 };
 }

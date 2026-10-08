@@ -17,6 +17,35 @@ assert.ok(road?.isMesh && pit?.isMesh);
 assert.ok(world.environment.grandstandCount>=6,
   `only ${world.environment.grandstandCount} stands were placed`);
 assert.ok(world.environment.treeCount>=300);
+assert.ok(world.environment.infieldCompoundCount>=2,
+  'infield maintenance compounds are missing');
+const stands=world.environment.group.children.filter(obj=>obj.userData.facesTrack);
+for(const stand of stands) {
+  const bench=stand.children.find(obj=>obj.name.includes('seating terraces'));
+  const legs=stand.children.find(obj=>obj.name.includes('visible support legs'));
+  assert.ok(bench?.isInstancedMesh && legs?.count>=12,
+    'grandstand terraces need terrain-anchored supports');
+  const firstMatrix=new THREE.Matrix4(), lastMatrix=new THREE.Matrix4();
+  bench.getMatrixAt(0,firstMatrix);
+  bench.getMatrixAt(bench.count-1,lastMatrix);
+  const first=new THREE.Vector3().setFromMatrixPosition(
+    firstMatrix.premultiply(bench.matrixWorld));
+  const last=new THREE.Vector3().setFromMatrixPosition(
+    lastMatrix.premultiply(bench.matrixWorld));
+  const trackPoint=new THREE.Vector3(...stand.userData.trackPoint);
+  assert.ok(first.distanceTo(trackPoint)<last.distanceTo(trackPoint),
+    stand.name+' seats face away from the track');
+}
+let triangles=0, drawCalls=0;
+scene.traverse(obj=>{
+  if(!obj.isMesh)return;
+  drawCalls++;
+  const n=obj.geometry.index?.count??obj.geometry.attributes.position?.count??0;
+  triangles+=n/3*(obj.isInstancedMesh?obj.count:1);
+});
+assert.ok(triangles<550000 && drawCalls<260,
+  'Interlagos scenery exceeded the visual performance budget');
+
 assert.ok(world.trackside.barrierCount>100);
 const asphalt=world.samples;
 const half=6.5;

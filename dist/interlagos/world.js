@@ -429,7 +429,7 @@ export function createInterlagosWorld(THREE, scene) {
   const trackside = addInterlagosTrackside(THREE, scene, curve, frames, LANDMARKS,
     { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: -1 });
   const environment = addInterlagosEnvironment(THREE, scene, curve, frames, LANDMARKS,
-    { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: -1 });
+    { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: -1, terrainHeightAt });
   const bounds = new THREE.Box3().setFromPoints(samples).expandByScalar(180);
   const trackHeightAt = (u, x, z) => {
     const wrapped = ((u % 1) + 1) % 1;

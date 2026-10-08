@@ -31,6 +31,37 @@ assert.ok(pit?.isMesh, 'the LUSAIL pit lane exists');
 assert.ok(garages?.isInstancedMesh, 'the pit complex exists');
 assert.ok(environment?.group?.isGroup && trackside?.group?.isGroup);
 
+// The official venue landmarks must remain visible, properly supported and
+// directed toward the racing line when seen from the spectator seats.
+for (const stand of environment.landmarks.stands) {
+  assert.ok(stand.getObjectByName('grandstand visible support legs'),
+    stand.name + ' needs visible supports');
+  const front = new THREE.Vector3(-1, 0, 0)
+    .applyQuaternion(stand.quaternion).setY(0).normalize();
+  const toRoad = new THREE.Vector3(...stand.userData.trackTarget)
+    .sub(stand.position).setY(0).normalize();
+  assert.ok(front.dot(toRoad) > .97,
+    stand.name + ' seating must face the asphalt');
+}
+for (const name of [
+  'Lusail Hill at Turn 1', 'Lusail Turn 1 VVIP tree canopy',
+  'Lusail medical and operations centre', 'Qatar Motorsports Academy',
+  'Lusail media and broadcast compound',
+  'Lusail landscaped palm trunks', 'Lusail seven-frond palm crowns',
+  'Lusail drought-tolerant low shrubs',
+]) assert.ok(scene.getObjectByName(name), name + ' is present');
+const hillBank = scene.getObjectByName('landscaped spectator bank');
+assert.ok(hillBank.geometry.getAttribute('position').array
+  .some((value, index) => index % 3 === 1 && value > 5.5),
+  'Lusail Hill has a raised spectator crest');
+const canopy = scene.getObjectByName('60 m branching shade canopy');
+const canopySize = new THREE.Box3().setFromObject(canopy)
+  .getSize(new THREE.Vector3());
+assert.ok(canopySize.x > 56 && canopySize.z > 56,
+  'the T1 VVIP shade reads as a 60 m diameter landmark');
+assert.ok(environment.palmCount >= 120 && environment.shrubCount >= 100
+  && environment.campusBuildingCount === 3,
+  'the venue has enough optimized landscape and architecture detail');
 const cellSize = 24;
 const cells = new Map();
 const segments = [];

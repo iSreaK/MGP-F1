@@ -222,10 +222,9 @@ function addRollingTerrain(THREE, scene, samples) {
   const textureLeft = centreX - 9000, textureTop = centreZ + 9000;
   // Matching world-space UVs keep the local terrain and distant ground in
   // phase, avoiding the rectangular seam visible from the overview camera.
-  // The near terrain still meets a flat datum at its outer edge. Farther
-  // away, broad low hills break the artificial level horizon. Their envelope
-  // stays at zero for two far-mesh cells beyond that edge, so no triangle can
-  // introduce a raised rectangular seam where the meshes overlap.
+  // Low sculpted landscape outside the run-off is inspired by Lusail's
+  // 2023 landscaped public realm; the racing line and flat desert horizon
+  // keep their existing elevations. The envelope fades at the outer mesh.
   const plainGeometry = new THREE.PlaneGeometry(18000, 18000, 64, 64);
   const plainPositions = plainGeometry.getAttribute('position');
   const plainUV = plainGeometry.getAttribute('uv');
@@ -267,9 +266,13 @@ function addRollingTerrain(THREE, scene, samples) {
     const edgeDistance = Math.min(x - minX, maxX - x, z - minZ, maxZ - z);
     const edgeFade = smoothstep(edgeDistance / 165);
     const far = base;
-    const bank = nearHeight - 1.08 - Math.min(8, Math.max(0, distance - 14) * .039);
+    const bank = nearHeight - 1.08 - Math.min(3.8,
+      Math.max(0, distance - 24) * .024);
     const following = 1 - smoothstep((distance - 14) / 270);
-    positions.push(x, far * (1 - following) + bank * following, z);
+    const dune = (valueNoise(x / 185 + 39, z / 185 - 16) - .5) * 3.0
+      + (valueNoise(x / 410 - 13, z / 410 + 28) - .5) * 2.2;
+    const mound = dune * smoothstep((distance - 38) / 115) * edgeFade;
+    positions.push(x, far * (1 - following) + bank * following + mound, z);
     uvs.push((x - textureLeft) / tileMetres,
       (textureTop - z) / tileMetres);
     const meadow = valueNoise(x / 275 + 19, z / 275 - 6) * .61
@@ -421,7 +424,8 @@ export function createLusailWorld(THREE, scene) {
   const trackside = addLusailTrackside(THREE, scene, curve, frames, LANDMARKS,
     { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: 1 });
   const environment = addLusailEnvironment(THREE, scene, curve, frames, LANDMARKS,
-    { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: 1 });
+    { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions,
+      pitSide: 1, terrainHeightAt });
   const bounds = new THREE.Box3().setFromPoints(samples).expandByScalar(180);
   const trackHeightAt = (u, x, z) => {
     const wrapped = ((u % 1) + 1) % 1;
