@@ -20,3 +20,9 @@ scripts/lusail/__pycache__/
 scripts/interlagos-replay/raw/
 scripts/las-vegas-replay/raw/
 scripts/lusail-replay/raw/
+
+scripts/yas-marina-replay/raw/
+scripts/yas-marina/*.pdf
+scripts/yas-marina/*.png
+scripts/yas-marina/openf1-sessions.json
+scripts/yas-marina/source-circuit-paths.dart

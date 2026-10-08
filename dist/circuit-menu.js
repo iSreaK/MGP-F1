@@ -15,6 +15,7 @@ if (circuitMenu) {
     { slug: 'interlagos', number: '05', name: 'Interlagos', detail: 'Brésil · 4,309 km' },
     { slug: 'las-vegas', number: '06', name: 'Las Vegas', detail: 'Nevada · 6,201 km' },
     { slug: 'lusail', number: '07', name: 'Lusail', detail: 'Qatar · 5,419 km' },
+    { slug: 'yas-marina', number: '08', name: 'Yas Marina', detail: 'Abou Dhabi · 5,281 km' },
   ];
 
   for (const circuit of circuits) {
