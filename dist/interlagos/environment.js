@@ -250,8 +250,38 @@ export function addInterlagosEnvironment(THREE, scene, curve, frames, landmarks,
       ribbon.quaternion.copy(frame.quaternion);
       group.add(ribbon);
     }
+    if (u === .955) {
+      // The media and operations level breaks the otherwise blank paddock
+      // roofline visible from the starting grid.
+      const level = new THREE.Group();
+      level.name = 'Interlagos paddock media and operations level';
+      level.position.set(x, annex.position.y + height/2 + .24, z);
+      level.quaternion.copy(frame.quaternion);
+      group.add(level);
+      const glazing = new THREE.Mesh(new THREE.BoxGeometry(12, 7, 34),
+        new THREE.MeshStandardMaterial({ color: 0x557784, metalness: .26,
+          roughness: .31, emissive: 0x152e38, emissiveIntensity: .35 }));
+      glazing.name = 'Interlagos paddock upper glazing';
+      glazing.position.y = 3.5;
+      level.add(glazing);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(14, .48, 36), roofMaterial);
+      cap.name = 'Interlagos paddock operations overhang';
+      cap.position.y = 7.24;
+      level.add(cap);
+      const mullions = new THREE.InstancedMesh(
+        new THREE.BoxGeometry(.18, 6.5, .22), darkSteel, 16);
+      mullions.name = 'Interlagos paddock operations glazing mullions';
+      let slot = 0;
+      for (const side of [-1, 1]) for (let i = 0; i < 8; i++) {
+        helper.position.set(side * 6.12, 3.5, -15 + i * 4.3);
+        helper.quaternion.identity(); helper.scale.set(1,1,1);
+        helper.updateMatrix();
+        mullions.setMatrixAt(slot++, helper.matrix);
+      }
+      mullions.instanceMatrix.needsUpdate = true;
+      level.add(mullions);
+    }
   }
-
 
   // The infield contains service compounds and narrow access lanes. Small
   // terrain-following pads keep them seated in the bowl without flattening the
@@ -446,7 +476,7 @@ export function addInterlagosEnvironment(THREE, scene, curve, frames, landmarks,
     if (distance<halfWidth+28 || distance>280 || nearStand(x,z,7) || nearStructure(x,z,7)) continue;
     const g=groundAt(x,z);
     const height=9.5+random()*10;
-    const slender=random()<.25;
+    const slender=random()<.08;
     if (slender) {
       helper.position.set(x,g+height*.64,z);
       helper.quaternion.identity();

@@ -380,6 +380,37 @@ export function addVegasVenueDetails(THREE, group, frames, frameAt, nearRoad, si
       color: store.tint < .35 ? 0xb97bdf : store.tint < .7 ? 0x72cceb : 0xf5a86a,
     }));
 
+  // Large race-week LED screens break the flat retail frontage on the Strip.
+  // They reuse one texture and one draw call; each panel stays on an existing
+  // shop facade, safely behind the barriers and pedestrian pavement.
+  const screenStores = stores.filter((_, index) => index % 4 === 1);
+  if (screenStores.length) {
+    const screenMaterial = new THREE.MeshBasicMaterial({
+      ...(typeof textTexture === 'function'
+        ? { map: textTexture('LAS VEGAS GRAND PRIX', '#ee72c5') }
+        : { color: 0xee72c5 }),
+      side: THREE.DoubleSide, toneMapped: false,
+    });
+    const screens = new THREE.InstancedMesh(
+      new THREE.PlaneGeometry(21, 4.8), screenMaterial, screenStores.length);
+    screens.name = 'Strip race-week LED facade screens';
+    const turnToRoad = new THREE.Quaternion();
+    screenStores.forEach(({ anchor, depth, height }, index) => {
+      const local = new THREE.Vector3(
+        -anchor.side * (depth / 2 + .22), Math.min(height - 2.8, 6.2), 0);
+      helper.position.copy(local.applyQuaternion(anchor.quaternion).add(anchor.point));
+      turnToRoad.setFromAxisAngle(up, -anchor.side * Math.PI / 2);
+      helper.quaternion.copy(anchor.quaternion).multiply(turnToRoad);
+      helper.scale.set(1, 1, 1);
+      helper.updateMatrix();
+      screens.setMatrixAt(index, helper.matrix);
+    });
+    screens.instanceMatrix.needsUpdate = true;
+    screens.frustumCulled = false;
+    group.add(screens);
+    instances.push(screens);
+  }
+
   // The 167 m High Roller stands east of the Boulevard behind the LINQ.
   // The wheel and 28 cabins are recognisable from the Strip, yet stay clear
   // of all branches of the course through the same footprint placement test.

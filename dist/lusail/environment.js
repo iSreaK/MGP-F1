@@ -31,6 +31,7 @@ export function addLusailEnvironment(THREE, scene, curve, frames, landmarks, opt
       roughness: .25, emissive: 0x102336, emissiveIntensity: .6 }),
     seat: new THREE.MeshStandardMaterial({ color: 0x1b8b92, roughness: .85 }),
     seatPale: new THREE.MeshStandardMaterial({ color: 0xddd4c1, roughness: .85 }),
+    spectator: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .92 }),
     blue: new THREE.MeshStandardMaterial({ color: 0x12517d, roughness: .78 }),
     bright: new THREE.MeshBasicMaterial({ color: 0xfff8da, toneMapped: false }),
     warm: new THREE.MeshBasicMaterial({ color: 0xf6be72, toneMapped: false }),
@@ -153,6 +154,7 @@ export function addLusailEnvironment(THREE, scene, curve, frames, landmarks, opt
     instancedBoxes(stand, 'grandstand visible support legs', [.7, 9.8, .7],
       materials.steel, supports);
     const aisles = [], seatTransforms = [], paleSeats = [];
+    const spectators = [], spectatorHeads = [];
     for (let row = 0; row < spec.rows; row++) {
       const x = -12 + row * 2.65;
       const height = 4.1 + row * .9;
@@ -162,6 +164,13 @@ export function addLusailEnvironment(THREE, scene, curve, frames, landmarks, opt
         const z = -spec.length / 2 + 4.5 + col * (spec.length - 9) / columns;
         const target = (col + row * 3) % 7 === 0 ? paleSeats : seatTransforms;
         target.push([x, height + .1, z]);
+        // Race-day seating should read as a crowd from the chase camera.
+        // A deterministic stagger leaves aisles and small empty patches.
+        if ((row * 13 + col * 7 + stands.length * 11) % 13 < 9
+          && Math.abs(Math.abs(z) - spec.length / 3) > 2.7) {
+          spectators.push([x, height + .62, z]);
+          spectatorHeads.push([x, height + 1.25, z]);
+        }
       }
     }
     instancedBoxes(stand, 'stepped concrete risers', [2.64, .26, 2.6],
@@ -170,6 +179,27 @@ export function addLusailEnvironment(THREE, scene, curve, frames, landmarks, opt
       materials.seat, seatTransforms);
     instancedBoxes(stand, 'pale spectator seats', [1.65, .3, 1.35],
       materials.seatPale, paleSeats);
+    const spectatorBodies = instancedBoxes(stand, 'race-day spectator bodies',
+      [.61, .86, .48], materials.spectator, spectators);
+    const bodyColors = [0xf2ece2, 0x22757b, 0xb12636, 0x274b72, 0xe0b95b];
+    spectators.forEach((_, i) =>
+      spectatorBodies.setColorAt(i, new THREE.Color(bodyColors[
+        (i * 7 + stands.length * 3) % bodyColors.length])));
+    spectatorBodies.instanceColor.needsUpdate = true;
+    const heads = new THREE.InstancedMesh(new THREE.SphereGeometry(.28, 6, 4),
+      materials.spectator, spectatorHeads.length);
+    heads.name = 'race-day spectator heads';
+    spectatorHeads.forEach(([x,y,z], i) => {
+      helper.position.set(x,y,z);
+      helper.quaternion.identity(); helper.scale.set(1,1,1); helper.updateMatrix();
+      heads.setMatrixAt(i,helper.matrix);
+      heads.setColorAt(i,new THREE.Color([0xefd6b6,0xc89770,0x925f45,0x5b4036][
+        (i * 5 + stands.length) % 4]));
+    });
+    heads.instanceMatrix.needsUpdate = true;
+    heads.instanceColor.needsUpdate = true;
+    heads.frustumCulled = false;
+    stand.add(heads);
     // Single white canopy with ribs and clear roof supports. Position and
     // dimensions are reconstructed; all legs are behind the safety verge.
     addBox(stand, 'white tensile canopy', [37, .38, spec.length + 5],
@@ -360,6 +390,45 @@ export function addLusailEnvironment(THREE, scene, curve, frames, landmarks, opt
       hillRails.push([-5.1, 8.0, z]);
     instancedBoxes(hill, 'Lusail Hill viewing rail', [.13, 1.3, .13],
       materials.steel, hillRails);
+    const hillVisitors = [], hillHeads = [];
+    let hillSeed = 41025;
+    const hillRandom = () => ((hillSeed = Math.imul(hillSeed, 1664525)
+      + 1013904223 >>> 0) / 4294967296);
+    for (let tries = 0; hillVisitors.length < 145 && tries < 800; tries++) {
+      const x = (hillRandom() - .5) * 81;
+      const z = (hillRandom() - .5) * 116;
+      const radial = Math.max(0, 1 - (x / 48) ** 2 - (z / 68) ** 2);
+      if (radial < .26 || (x > -8 && x < 15 && Math.abs(z) < 18))
+        continue;
+      const world = new THREE.Vector3(x, 0, z)
+        .applyQuaternion(hill.quaternion).add(hill.position);
+      const base = terrainHeightAt(world.x, world.z, hill.position.y);
+      const ground = base - hill.position.y + Math.pow(radial, 1.35) * 7.1;
+      hillVisitors.push([x, ground + .54, z]);
+      hillHeads.push([x, ground + 1.25, z]);
+    }
+    const bankCrowd = instancedBoxes(hill, 'Lusail Hill spectator bodies',
+      [.62, .91, .45], materials.spectator, hillVisitors);
+    const hillPalette = [0xe8e4d8, 0x1a6f85, 0xbd5140, 0x28436c, 0xe4b95e];
+    hillVisitors.forEach((_, i) => bankCrowd.setColorAt(i,
+      new THREE.Color(hillPalette[(i * 3) % hillPalette.length])));
+    bankCrowd.instanceColor.needsUpdate = true;
+    const bankHeads = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(.27, 6, 4), materials.spectator,
+      hillHeads.length);
+    bankHeads.name = 'Lusail Hill spectator heads';
+    hillHeads.forEach(([x,y,z], i) => {
+      helper.position.set(x,y,z);
+      helper.quaternion.identity(); helper.scale.set(1,1,1);
+      helper.updateMatrix();
+      bankHeads.setMatrixAt(i,helper.matrix);
+      bankHeads.setColorAt(i,new THREE.Color(
+        [0xe9cfaf,0xb88661,0x81563b,0x513b32][i%4]));
+    });
+    bankHeads.instanceMatrix.needsUpdate = true;
+    bankHeads.instanceColor.needsUpdate = true;
+    bankHeads.frustumCulled = false;
+    hill.add(bankHeads);
   }
 
   // The 2023 VVIP building has a distinctive roughly 60 m tree-like canopy.
