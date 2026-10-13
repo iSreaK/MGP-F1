@@ -3,6 +3,7 @@ import { addYasMarinaEnvironment } from './environment.js';
 import { addYasMarinaGridDetails } from './grid-details.js';
 import { addYasMarinaTrackside } from './trackside-details.js';
 import { prepareYasMarinaCurve } from './geometry-smoothing.js';
+import { mirrorTrackPointsX } from '../track-orientation.js';
 
 // FIA fixes plan-view corner order and length. Road width and runoff extents
 // are conservative visual reconstructions rather than a facility survey.
@@ -319,7 +320,7 @@ export function createYasMarinaWorld(THREE, scene) {
   if (!Array.isArray(TRACK_POINTS) || TRACK_POINTS.length < 80) {
     throw new Error('Le tracé de Yas Marina est incomplet.');
   }
-  const { curve, sourcePoints } = prepareYasMarinaCurve(THREE, TRACK_POINTS,
+  const { curve, sourcePoints } = prepareYasMarinaCurve(THREE, mirrorTrackPointsX(TRACK_POINTS),
     TRACK_LENGTH_METERS);
   const { fractions: sourceFractions } = distanceFractions(sourcePoints);
   const samples = Array.from({ length: SAMPLE_COUNT }, (_, i) => curve.getPointAt(i / SAMPLE_COUNT));
@@ -424,9 +425,18 @@ export function createYasMarinaWorld(THREE, scene) {
   const grid = addYasMarinaGridDetails(THREE, scene, curve, sourcePoints, LANDMARKS, 0, half);
   const trackside = addYasMarinaTrackside(THREE, scene, curve, frames, LANDMARKS,
     { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: 1 });
-  const environment = addYasMarinaEnvironment(THREE, scene, curve, frames, LANDMARKS,
+  const originalEnvironmentCurve = prepareYasMarinaCurve(THREE, TRACK_POINTS,
+    TRACK_LENGTH_METERS).curve;
+  const originalEnvironmentFrames = Array.from({ length: SAMPLE_COUNT }, (_, i) => {
+    const point = originalEnvironmentCurve.getPointAt(i / SAMPLE_COUNT);
+    const forward = originalEnvironmentCurve.getTangentAt(i / SAMPLE_COUNT).setY(0).normalize();
+    return { point, forward, across: new THREE.Vector3(forward.z, 0, -forward.x) };
+  });
+  const environment = addYasMarinaEnvironment(THREE, scene, originalEnvironmentCurve,
+    originalEnvironmentFrames, LANDMARKS,
     { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions,
-      pitSide: 1, terrainHeightAt });
+      pitSide: 1, terrainHeightAt: (x, z, fallback) => terrainHeightAt(-x, z, fallback) });
+  environment.group.scale.x = -1;
   const bounds = new THREE.Box3().setFromPoints(samples).expandByScalar(180);
   const trackHeightAt = (u, x, z) => {
     const wrapped = ((u % 1) + 1) % 1;

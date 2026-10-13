@@ -1,5 +1,7 @@
 import { TRACK_POINTS, TRACK_LENGTH_METERS, TRACK_WIDTH_METERS, LANDMARKS } from './track-data.js';
 import { prepareVegasCurve } from './geometry-smoothing.js';
+import { mirrorTrackPointsX } from '../track-orientation.js';
+import { sculptPlaneToTrack } from '../terrain-follow.js';
 import { addVegasGridDetails } from './grid-details.js';
 import { addVegasTrackside } from './trackside-details.js';
 import { addVegasEnvironment } from './environment.js';
@@ -95,7 +97,8 @@ function dashedRoadPaint(THREE, scene, frames, from, to, segments, material, nam
 export function createVegasWorld(THREE, scene) {
   if (TRACK_POINTS.length < 500 || Object.keys(LANDMARKS.turns).length !== 17)
     throw new Error('Le tracé FIA de Las Vegas est incomplet.');
-  const { curve, sourcePoints } = prepareVegasCurve(THREE, TRACK_POINTS, TRACK_LENGTH_METERS);
+  const { curve, sourcePoints } = prepareVegasCurve(THREE,
+    mirrorTrackPointsX(TRACK_POINTS), TRACK_LENGTH_METERS);
   const frames = Array.from({ length: SAMPLE_COUNT }, (_, index) => {
     const u = index / SAMPLE_COUNT;
     const point = curve.getPointAt(u);
@@ -104,10 +107,12 @@ export function createVegasWorld(THREE, scene) {
   });
   const half = TRACK_WIDTH_METERS / 2;
 
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6200),
+  const groundGeometry = sculptPlaneToTrack(
+    new THREE.PlaneGeometry(6000, 6200, 96, 96), frames.map(frame => frame.point),
+    { baseHeight: -.24, roadClearance: .52, innerRadius: 85, outerRadius: 900 });
+  const ground = new THREE.Mesh(groundGeometry,
     new THREE.MeshStandardMaterial({ color: 0x151923, roughness: .97 }));
   ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -.24;
   ground.name = 'Las Vegas night city ground';
   scene.add(ground);
 
@@ -167,7 +172,15 @@ export function createVegasWorld(THREE, scene) {
   const environment = addVegasEnvironment(THREE, scene, curve, frames, LANDMARKS,
     { trackY: .38, halfWidth: half, gridU: grid.gridU, sourceFractions: sourceDistances.map(v => v / full), pitSide: -1 });
   const bounds = new THREE.Box3().setFromPoints(frames.map(frame => frame.point)).expandByScalar(230);
-  return { curve, samples: frames.map(frame => frame.point), trackHeightAt: () => .38,
+  const trackHeightAt = (u, x, z) => {
+    const wrapped = ((u % 1) + 1) % 1;
+    const point = curve.getPointAt(wrapped);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return point.y;
+    const tangent = curve.getTangentAt(wrapped);
+    const grade = tangent.y / Math.max(.01, Math.hypot(tangent.x, tangent.z));
+    return point.y + ((x - point.x) * tangent.x + (z - point.z) * tangent.z) * grade;
+  };
+  return { curve, samples: frames.map(frame => frame.point), trackHeightAt,
     bounds, gridU: grid.gridU, gridPoint: grid.gridPoint, gridTangent: grid.gridTangent,
     trackMaterial: asphalt, overviewAccent, environment, trackside };
 }

@@ -3,6 +3,7 @@ import { addAustinEnvironment } from './environment.js';
 import { addAustinGridDetails } from './grid-details.js';
 import { addAustinTrackside } from './trackside-details.js';
 import { prepareAustinCurve } from './geometry-smoothing.js';
+import { mirrorTrackPointsX } from '../track-orientation.js';
 
 // The FIA map fixes the plan-view centreline and corner order. The elevation
 // profile models COTA's climb to T1; widths and runoff depths are estimated.
@@ -324,7 +325,7 @@ export function createAustinWorld(THREE, scene) {
   if (!Array.isArray(TRACK_POINTS) || TRACK_POINTS.length < 80) {
     throw new Error('Le tracé d’Austin est incomplet.');
   }
-  const { curve, sourcePoints } = prepareAustinCurve(THREE, TRACK_POINTS,
+  const { curve, sourcePoints } = prepareAustinCurve(THREE, mirrorTrackPointsX(TRACK_POINTS),
     TRACK_LENGTH_METERS);
   const { fractions: sourceFractions } = distanceFractions(sourcePoints);
   const samples = Array.from({ length: SAMPLE_COUNT }, (_, i) => curve.getPointAt(i / SAMPLE_COUNT));

@@ -8,6 +8,8 @@ import { LANDMARKS } from './track-data.js';
 
 const LAP_LENGTH = 4304;
 const BASE_Y = .36;
+export const DOCUMENTED_RELIEF_METERS = 2.8;
+export const RELIEF_PRESENTATION_SCALE = 2;
 const T17_APEX_METERS = LANDMARKS.turns.T17.distanceMeters;
 // The historic Peraltada was 8.5 degrees after its 1986 reconstruction;
 // only a portion survives in the post-2015 F1 lap. An 8-degree visual peak
@@ -34,14 +36,14 @@ export function trackBankAngleAtFraction(fraction) {
 }
 
 export const ELEVATION_PROFILE_METERS = Object.freeze([
-  [0, 1.5],
-  [230, 1.5],
-  [610, 2.23],
-  [1250, 1.2],
-  [2050, 2.4],
-  [2940, .72],
-  [3620, 1.63],
-  [LAP_LENGTH, 1.5],
+  [0, 1.3],
+  [230, 1.3],
+  [610, 2.55],
+  [1250, 1.1],
+  [2050, 2.8],
+  [2940, 0],
+  [3620, 1.6],
+  [LAP_LENGTH, 1.3],
 ]);
 
 // Monotone cubic Hermite slopes: no invented peaks or dips between anchors.
@@ -85,10 +87,11 @@ export function trackHeightAtStation(station) {
   const span = x1 - x0;
   const t = (distance - x0) / span;
   const t2 = t * t, t3 = t2 * t;
-  return BASE_Y + (2 * t3 - 3 * t2 + 1) * y0
+  const physicalHeight = (2 * t3 - 3 * t2 + 1) * y0
     + (t3 - 2 * t2 + t) * span * derivatives[lo]
     + (-2 * t3 + 3 * t2) * y1
     + (t3 - t2) * span * derivatives[lo + 1];
+  return BASE_Y + physicalHeight * RELIEF_PRESENTATION_SCALE;
 }
 
 /** World-space road height at a normalized lap fraction. */
@@ -116,7 +119,7 @@ export function prepareMexicoCurve(THREE, trackPoints, targetLengthMetres = LAP_
   curve.updateArcLengths();
   const beforeCalibration = curve.getLength();
   let scale = 1;
-  // Scale only x/z; the shallow visual height profile stays unchanged.
+  // Scale only x/z; the shallow vertical profile keeps its presentation scale.
   for (let pass = 0; pass < 3; pass++) {
     const correction = targetLengthMetres / curve.getLength();
     scale *= correction;

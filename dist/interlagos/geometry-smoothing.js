@@ -7,6 +7,8 @@ import { LANDMARKS } from './track-data.js';
 
 const LAP_LENGTH = 4309;
 const BASE_Y = .36;
+export const DOCUMENTED_RELIEF_METERS = 43;
+export const RELIEF_PRESENTATION_SCALE = 1.18;
 
 export const ELEVATION_PROFILE_METERS = Object.freeze([
   [0, 41],
@@ -69,10 +71,11 @@ export function trackHeightAtStation(station) {
   const span = x1 - x0;
   const t = (distance - x0) / span;
   const t2 = t * t, t3 = t2 * t;
-  return BASE_Y + (2 * t3 - 3 * t2 + 1) * y0
+  const physicalHeight = (2 * t3 - 3 * t2 + 1) * y0
     + (t3 - 2 * t2 + t) * span * derivatives[lo]
     + (-2 * t3 + 3 * t2) * y1
     + (t3 - t2) * span * derivatives[lo + 1];
+  return BASE_Y + physicalHeight * RELIEF_PRESENTATION_SCALE;
 }
 
 /** World-space road height at a normalized lap fraction. */
@@ -100,7 +103,7 @@ export function prepareInterlagosCurve(THREE, trackPoints, targetLengthMetres = 
   curve.updateArcLengths();
   const beforeCalibration = curve.getLength();
   let scale = 1;
-  // Scale only x/z. The 43 m relief remains independent of plan calibration.
+  // Scale only x/z. The relief remains independent of plan calibration.
   for (let pass = 0; pass < 3; pass++) {
     const correction = targetLengthMetres / curve.getLength();
     scale *= correction;

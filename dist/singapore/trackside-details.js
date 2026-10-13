@@ -45,8 +45,6 @@ export function addSingaporeTrackside(THREE, scene, curve, frames, landmarks, op
   const wallIndices = [];
   const color = new THREE.Color();
   let barrierCount = 0;
-  const wallBottom = trackY - .08;
-  const wallTop = trackY + 1.04;
   for (let i = 0; i < frames.length; i++) {
     const u = i / frames.length;
     const a = frames[i];
@@ -61,20 +59,20 @@ export function addSingaporeTrackside(THREE, scene, curve, frames, landmarks, op
       color.setHex(highlighted ? 0xa32c32 : (panel % 7 === 0 ? 0xc0c4c3 : 0x9ba3a8));
       const inner = side * (halfWidth + 1.49);
       const outer = side * (halfWidth + 2.21);
-      const corner = (frame, lateral, y) => [
+      const corner = (frame, lateral, height) => [
         frame.point.x + frame.across.x * lateral,
-        y,
+        frame.point.y + height,
         frame.point.z + frame.across.z * lateral,
       ];
       const faces = [
-        [[corner(a, inner, wallBottom), corner(a, inner, wallTop),
-          corner(b, inner, wallBottom), corner(b, inner, wallTop)],
+        [[corner(a, inner, -.08), corner(a, inner, 1.04),
+          corner(b, inner, -.08), corner(b, inner, 1.04)],
         [a.across.clone().multiplyScalar(-side), b.across.clone().multiplyScalar(-side)]],
-        [[corner(a, outer, wallBottom), corner(a, outer, wallTop),
-          corner(b, outer, wallBottom), corner(b, outer, wallTop)],
+        [[corner(a, outer, -.08), corner(a, outer, 1.04),
+          corner(b, outer, -.08), corner(b, outer, 1.04)],
         [a.across.clone().multiplyScalar(side), b.across.clone().multiplyScalar(side)]],
-        [[corner(a, inner, wallTop), corner(a, outer, wallTop),
-          corner(b, inner, wallTop), corner(b, outer, wallTop)],
+        [[corner(a, inner, 1.04), corner(a, outer, 1.04),
+          corner(b, inner, 1.04), corner(b, outer, 1.04)],
         [up, up]],
       ];
       for (const [face, normals] of faces) {
@@ -123,7 +121,6 @@ export function addSingaporeTrackside(THREE, scene, curve, frames, landmarks, op
       const a = frame.point.clone().addScaledVector(frame.across, lateral);
       const m = middle.point.clone().addScaledVector(middle.across, lateral);
       const b = next.point.clone().addScaledVector(next.across, lateral);
-      a.y = m.y = b.y = trackY;
       fenceStations.push({ point: a, quaternion: frame.quaternion });
       for (const [start, end] of [[a, m], [m, b]]) {
         for (const height of [1.18, 1.94, 2.70, 3.46, 4.22]) {
@@ -187,17 +184,17 @@ export function addSingaporeTrackside(THREE, scene, curve, frames, landmarks, op
     const base = frame.point.clone().addScaledVector(frame.across, lateral);
     lightStations.push({
       head: base.clone().addScaledVector(frame.across, -side * 2.0)
-        .setY(trackY + 10.31),
-      target: frame.point.clone().setY(trackY),
+        .setY(frame.point.y + 10.31),
+      target: frame.point.clone(),
       colour: i % 4 === 0 ? 0xffecd9 : 0xe6f2ff,
     });
     helper.position.copy(base);
-    helper.position.y = trackY + 5.1;
+    helper.position.y = frame.point.y + 5.1;
     helper.quaternion.copy(frame.quaternion);
     helper.scale.set(1, 1, 1);
     helper.updateMatrix();
     masts.setMatrixAt(i, helper.matrix);
-    helper.position.y = trackY + 10.31;
+    helper.position.y = frame.point.y + 10.31;
     helper.position.addScaledVector(frame.across, -side * 2.0);
     helper.updateMatrix();
     bars.setMatrixAt(i, helper.matrix);
@@ -223,7 +220,7 @@ export function addSingaporeTrackside(THREE, scene, curve, frames, landmarks, op
         const across = 1 - .35 * (Math.abs(lateral) / halfWidth) ** 2;
         const alpha = .14 * axial * across;
         glowVertices.push(frame.point.x + frame.across.x * lateral,
-          trackY + .012, frame.point.z + frame.across.z * lateral);
+          frame.point.y + .012, frame.point.z + frame.across.z * lateral);
         glowColours.push(colour.r, colour.g, colour.b, alpha);
       }
     }

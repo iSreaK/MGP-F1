@@ -3,6 +3,8 @@ import { addSingaporeEnvironment } from './environment.js';
 import { addSingaporeGridDetails } from './grid-details.js';
 import { addSingaporeTrackside } from './trackside-details.js';
 import { prepareSingaporeCurve } from './geometry-smoothing.js';
+import { mirrorTrackPointsX } from '../track-orientation.js';
+import { sculptPlaneToTrack } from '../terrain-follow.js';
 
 // The FIA map fixes the centreline length and corner order. The source outline
 // does not contain a surveyed carriageway width or street elevations, so those
@@ -123,7 +125,7 @@ export function createSingaporeWorld(THREE, scene) {
   if (!Array.isArray(TRACK_POINTS) || TRACK_POINTS.length < 80) {
     throw new Error('Le tracé de Singapour est incomplet.');
   }
-  const { curve, sourcePoints } = prepareSingaporeCurve(THREE, TRACK_POINTS,
+  const { curve, sourcePoints } = prepareSingaporeCurve(THREE, mirrorTrackPointsX(TRACK_POINTS),
     TRACK_LENGTH_METERS);
   const { fractions: sourceFractions } = distanceFractions(sourcePoints);
   const samples = Array.from({ length: SAMPLE_COUNT }, (_, i) => curve.getPointAt(i / SAMPLE_COUNT));
@@ -144,10 +146,12 @@ export function createSingaporeWorld(THREE, scene) {
   const roadHalfWidthAt = () => half;
 
   const street = new THREE.MeshBasicMaterial({ color: 0x252b32, side: THREE.DoubleSide });
-  const urbanGround = new THREE.Mesh(new THREE.PlaneGeometry(6500, 6500), street);
+  const urbanGroundGeometry = sculptPlaneToTrack(
+    new THREE.PlaneGeometry(6500, 6500, 96, 96), samples,
+    { baseHeight: -.045, roadClearance: .48, innerRadius: 80, outerRadius: 820 });
+  const urbanGround = new THREE.Mesh(urbanGroundGeometry, street);
   urbanGround.name = 'Urban road and paved ground beyond the circuit';
   urbanGround.rotation.x = -Math.PI / 2;
-  urbanGround.position.y = -.045;
   urbanGround.receiveShadow = true;
   scene.add(urbanGround);
 
@@ -194,10 +198,26 @@ export function createSingaporeWorld(THREE, scene) {
   const grid = addSingaporeGridDetails(THREE, scene, curve, sourcePoints, LANDMARKS, TRACK_Y, half);
   const trackside = addSingaporeTrackside(THREE, scene, curve, frames, LANDMARKS,
     { trackY: TRACK_Y, halfWidth: half, gridU: grid.gridU, sourceFractions });
-  const environment = addSingaporeEnvironment(THREE, scene, curve, frames, LANDMARKS,
+  const originalEnvironmentCurve = prepareSingaporeCurve(THREE, TRACK_POINTS,
+    TRACK_LENGTH_METERS).curve;
+  const originalEnvironmentFrames = Array.from({ length: SAMPLE_COUNT }, (_, i) => {
+    const point = originalEnvironmentCurve.getPointAt(i / SAMPLE_COUNT);
+    const forward = originalEnvironmentCurve.getTangentAt(i / SAMPLE_COUNT).setY(0).normalize();
+    return { point, forward, across: new THREE.Vector3(forward.z, 0, -forward.x) };
+  });
+  const environment = addSingaporeEnvironment(THREE, scene, originalEnvironmentCurve,
+    originalEnvironmentFrames, LANDMARKS,
     { trackY: TRACK_Y, halfWidth: half, gridU: grid.gridU, sourceFractions });
+  environment.group.scale.x = -1;
   const bounds = new THREE.Box3().setFromPoints(samples).expandByScalar(135);
-  const trackHeightAt = () => TRACK_Y;
+  const trackHeightAt = (u, x, z) => {
+    const wrapped = ((u % 1) + 1) % 1;
+    const point = curve.getPointAt(wrapped);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return point.y;
+    const tangent = curve.getTangentAt(wrapped);
+    const grade = tangent.y / Math.max(.01, Math.hypot(tangent.x, tangent.z));
+    return point.y + ((x - point.x) * tangent.x + (z - point.z) * tangent.z) * grade;
+  };
   return {
     curve, samples, trackHeightAt, bounds,
     gridU: grid.gridU, gridPoint: grid.gridPoint, gridTangent: grid.gridTangent,

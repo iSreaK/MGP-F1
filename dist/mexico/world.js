@@ -3,6 +3,7 @@ import { addMexicoEnvironment } from './environment.js';
 import { addMexicoGridDetails } from './grid-details.js';
 import { addMexicoTrackside } from './trackside-details.js';
 import { prepareMexicoCurve, trackBankAngleAtFraction } from './geometry-smoothing.js';
+import { mirrorTrackPointsX } from '../track-orientation.js';
 
 // FIA plan-view geometry with subtle park relief. Widths and kerb/run-off
 // placements remain visual estimates rather than a kerb survey.
@@ -376,7 +377,7 @@ export function createMexicoWorld(THREE, scene) {
   if (!Array.isArray(TRACK_POINTS) || TRACK_POINTS.length < 80) {
     throw new Error('Le tracé de Mexico est incomplet.');
   }
-  const { curve, sourcePoints } = prepareMexicoCurve(THREE, TRACK_POINTS,
+  const { curve, sourcePoints } = prepareMexicoCurve(THREE, mirrorTrackPointsX(TRACK_POINTS),
     TRACK_LENGTH_METERS);
   const { fractions: sourceFractions } = distanceFractions(sourcePoints);
   const samples = Array.from({ length: SAMPLE_COUNT }, (_, i) => curve.getPointAt(i / SAMPLE_COUNT));
@@ -423,8 +424,13 @@ export function createMexicoWorld(THREE, scene) {
     const ground = terrainHeightAt(x, z, frame.point.y - 1.08);
     const blend = smoothstep((Math.abs(offset) - half - 3.6) / 6);
     const banking = bankHeightAt(frame.u, offset);
-    const y = (frame.point.y + banking - .16) * (1 - blend)
+    const graded = (frame.point.y + banking - .16) * (1 - blend)
       + (ground + .045) * blend;
+    // Keep the complete verge above the coarse terrain triangle, including
+    // the midpoint where a triangle can crest between sampled edge vertices.
+    const terrainClearance = .045 * blend
+      + .19 * blend * (1 - blend);
+    const y = Math.max(graded, ground + terrainClearance);
     return y - frame.point.y - banking;
   };
   createRibbon(THREE, scene, 'Mexico paved shoulder', frames, distances,

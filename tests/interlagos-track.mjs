@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import * as THREE from '../dist/vendor/three/build/three.module.js';
 import { TRACK_POINTS, TRACK_LENGTH_METERS, TRACK_WIDTH_METERS, LANDMARKS }
   from '../dist/interlagos/track-data.js';
-import { prepareInterlagosCurve, trackHeightAtStation }
+import { prepareInterlagosCurve, trackHeightAtStation, DOCUMENTED_RELIEF_METERS,
+  RELIEF_PRESENTATION_SCALE }
   from '../dist/interlagos/geometry-smoothing.js';
 
 const source=TRACK_POINTS.slice(0,-1);
@@ -55,6 +56,7 @@ assert.ok(maxGrade<.16,`grade is bounded at ${maxGrade}`);
 assert.ok(Math.abs(trackHeightAtStation(0)-trackHeightAtStation(4308.999))<.05);
 const relief=trackHeightAtStation(LANDMARKS.turns.T1.distanceMeters)
   - trackHeightAtStation(LANDMARKS.turns.T5.distanceMeters);
-assert.ok(Math.abs(relief-43)<.1,`Interlagos relief is 43m, got ${relief}`);
+assert.ok(Math.abs(relief-DOCUMENTED_RELIEF_METERS*RELIEF_PRESENTATION_SCALE)<.1,
+  `Interlagos rendered relief applies the presentation scale, got ${relief}`);
 console.log('Interlagos track OK', {sourcePoints:n,sourceLength:total,
   renderedLength:rendered.renderedLength,wobble,minRadius,maxGrade,relief});

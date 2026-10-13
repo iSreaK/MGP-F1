@@ -37,7 +37,15 @@ export function rectifySingaporeStraights(trackPoints) {
 /** Build the render spline from the already fair-fitted FIA centreline. */
 export function prepareSingaporeCurve(THREE, trackPoints, targetLengthMetres = 4927) {
   const smoothed = rectifySingaporeStraights(trackPoints);
-  const sourcePoints = smoothed.map(([x, z]) => new THREE.Vector3(x, .36, z));
+  const cumulative = [0];
+  for (let i = 1; i < smoothed.length; i++) cumulative.push(cumulative[i - 1] +
+    Math.hypot(smoothed[i][0] - smoothed[i - 1][0],
+      smoothed[i][1] - smoothed[i - 1][1]));
+  const last = smoothed.at(-1), first = smoothed[0];
+  const horizontalLength = cumulative.at(-1) +
+    Math.hypot(first[0] - last[0], first[1] - last[1]);
+  const sourcePoints = smoothed.map(([x, z], i) =>
+    new THREE.Vector3(x, trackHeightAtFraction(cumulative[i] / horizontalLength), z));
   const curve = new THREE.CatmullRomCurve3(sourcePoints, true, 'centripetal', .18);
   // Three.js defaults to 200 arc samples, which undercounts this 19-turn lap
   // by >30 m and distorts every getPointAt/getTangentAt call.
@@ -50,6 +58,32 @@ export function prepareSingaporeCurve(THREE, trackPoints, targetLengthMetres = 4
     point.z *= scale;
   }
   curve.updateArcLengths();
-  return { curve, sourcePoints, smoothed, scale,
+  return { curve, sourcePoints, smoothed, scale, horizontalLength,
     beforeCalibration, renderedLength: curve.getLength() };
+}
+import { createElevationSampler } from '../elevation-profile.js';
+
+const LAP_LENGTH = 4927;
+const BASE_Y = .36;
+export const DOCUMENTED_RELIEF_METERS = 5.3;
+export const RELIEF_PRESENTATION_SCALE = 1.8;
+export const ELEVATION_PROFILE_METERS = Object.freeze([
+  [0, 1.8],
+  [420, 1.8],
+  [980, 3.8],
+  [1540, 5.3],
+  [2220, 3.0],
+  [3100, 0],
+  [4050, .9],
+  [LAP_LENGTH, 1.8],
+]);
+const sampleElevation = createElevationSampler(ELEVATION_PROFILE_METERS, {
+  lapLength: LAP_LENGTH,
+  baseY: BASE_Y,
+  presentationScale: RELIEF_PRESENTATION_SCALE,
+});
+
+export function trackHeightAtStation(station) { return sampleElevation(station); }
+export function trackHeightAtFraction(fraction) {
+  return trackHeightAtStation(fraction * LAP_LENGTH);
 }

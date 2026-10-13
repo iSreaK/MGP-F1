@@ -10,6 +10,10 @@
 
 const LAP_LENGTH = 5513;
 const BASE_Y = .36;
+// The complete 41 m profile disappears in the circuit-wide camera at a 5.5 km
+// scale. Preserve its shape and magnify only its vertical presentation.
+export const DOCUMENTED_T1_RISE_METERS = 40.5;
+export const RELIEF_PRESENTATION_SCALE = 1.22;
 
 export const ELEVATION_PROFILE_METERS = Object.freeze([
   [0, 1.5],
@@ -67,7 +71,7 @@ export function trackHeightAtStation(station) {
     // that creates a sharp 15% spike near the foot of the climb.
     const travelled = distance - 323;
     const span = 347, ramp = 25;
-    const rise = 40.5;
+    const rise = DOCUMENTED_T1_RISE_METERS;
     const grade = rise / (span - ramp);
     const rampArea = t => ramp * (t * t * t - .5 * t * t * t * t);
     let aboveStart;
@@ -75,7 +79,7 @@ export function trackHeightAtStation(station) {
     else if (travelled > span - ramp)
       aboveStart = rise - grade * rampArea((span - travelled) / ramp);
     else aboveStart = grade * (travelled - ramp / 2);
-    return BASE_Y + 1.5 + aboveStart;
+    return BASE_Y + (1.5 + aboveStart) * RELIEF_PRESENTATION_SCALE;
   }
   let lo = 0, hi = ELEVATION_PROFILE_METERS.length - 2;
   while (lo < hi) {
@@ -88,10 +92,11 @@ export function trackHeightAtStation(station) {
   const span = x1 - x0;
   const t = (distance - x0) / span;
   const t2 = t * t, t3 = t2 * t;
-  return BASE_Y + (2 * t3 - 3 * t2 + 1) * y0
+  const physicalHeight = (2 * t3 - 3 * t2 + 1) * y0
     + (t3 - 2 * t2 + t) * span * derivatives[lo]
     + (-2 * t3 + 3 * t2) * y1
     + (t3 - t2) * span * derivatives[lo + 1];
+  return BASE_Y + physicalHeight * RELIEF_PRESENTATION_SCALE;
 }
 
 /** World-space road height at a normalized lap fraction. */
@@ -119,7 +124,7 @@ export function prepareAustinCurve(THREE, trackPoints, targetLengthMetres = LAP_
   curve.updateArcLengths();
   const beforeCalibration = curve.getLength();
   let scale = 1;
-  // Scale only x/z. Vertical relief remains tied to the real 41 m T1 climb.
+  // Scale only x/z. The vertical profile keeps its independent presentation scale.
   for (let pass = 0; pass < 3; pass++) {
     const correction = targetLengthMetres / curve.getLength();
     scale *= correction;

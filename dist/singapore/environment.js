@@ -35,7 +35,7 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
   const worldAt = (u, across, forward = 0) => {
     const frame = frameAt(u);
     return frame.point.clone().addScaledVector(frame.across, across)
-      .addScaledVector(frame.forward, forward).setY(0);
+      .addScaledVector(frame.forward, forward);
   };
   // The FIA centreline loops close to itself here. A landmark offset from one
   // corner can still cover another stretch of road, so reserve its full ground
@@ -58,7 +58,6 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
     // farther along the same straight, behind its barrier and aligned with it.
     if (corner === 2) position.addScaledVector(frame.across, -50)
       .addScaledVector(frame.forward, 60);
-    position.y = 0;
     return [{ corner, side, shift, width, frame, position }];
   });
   const flyerU = turnU(18) ?? .94;
@@ -119,7 +118,7 @@ export function addSingaporeEnvironment(THREE, scene, curve, frames, landmarks, 
         [b, side * (halfWidth + 2.9)], [b, side * (halfWidth + width)],
       ]) {
         pavementPanels.push(frame.point.x + frame.across.x * offset,
-          trackY - .12, frame.point.z + frame.across.z * offset);
+          frame.point.y - .12, frame.point.z + frame.across.z * offset);
       }
     }
   }

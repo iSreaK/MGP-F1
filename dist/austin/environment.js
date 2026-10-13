@@ -768,7 +768,7 @@ export function addAustinEnvironment(THREE, scene, curve, frames, landmarks, opt
   }
   if (serviceLot) {
     addAccessPath('COTA outer parking access road', serviceLot.position,
-      serviceLot.position.clone().add(new THREE.Vector3(310, 0, -20)),
+      serviceLot.position.clone().add(new THREE.Vector3(-310, 0, -20)),
       7.5, serviceAsphalt);
   }
 

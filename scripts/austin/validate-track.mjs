@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import * as THREE from '../../dist/vendor/three/build/three.module.js';
 import { TRACK_LENGTH_METERS, TRACK_WIDTH_METERS, TRACK_POINTS, LANDMARKS }
   from '../../dist/austin/track-data.js';
-import { prepareAustinCurve, trackHeightAtStation }
+import { prepareAustinCurve, trackHeightAtStation, DOCUMENTED_T1_RISE_METERS,
+  RELIEF_PRESENTATION_SCALE }
   from '../../dist/austin/geometry-smoothing.js';
 
 const source = TRACK_POINTS.slice(0, -1);
@@ -101,12 +102,13 @@ for (let i = 0; i < samples.length; i++) {
 assert.ok(minimumBendRadius > TRACK_WIDTH_METERS / 2 + .8,
   'inner road edge retains curvature radius');
 assert.ok(minEdgeForward > .06, 'road edges advance through every corner');
-assert.ok(maximumGrade < .14, 'uphill/downhill grade is bounded');
+assert.ok(maximumGrade < .16, 'visually amplified uphill/downhill grade is bounded');
 assert.ok(Math.abs(trackHeightAtStation(0) -
   trackHeightAtStation(TRACK_LENGTH_METERS - .001)) < .001,
   'elevation closes without a road seam');
-assert.ok(Math.abs(trackHeightAtStation(670) - trackHeightAtStation(323) - 40.5) < .02,
-  'T1 gains 40.5m from the standing start');
+assert.ok(Math.abs(trackHeightAtStation(670) - trackHeightAtStation(323)
+  - DOCUMENTED_T1_RISE_METERS * RELIEF_PRESENTATION_SCALE) < .02,
+  'T1 keeps its documented rise and applies the presentation scale');
 
 assert.equal(LANDMARKS.controlLineIndex, 0);
 assert.ok(Math.abs(cumulative[LANDMARKS.gridIndex] - 323) < .02,

@@ -3,6 +3,7 @@ import { addLusailEnvironment } from './environment.js';
 import { addLusailGridDetails } from './grid-details.js';
 import { addLusailTrackside } from './trackside-details.js';
 import { prepareLusailCurve } from './geometry-smoothing.js';
+import { mirrorTrackPointsX } from '../track-orientation.js';
 
 // FIA fixes plan-view corner order and length. Road width and runoff extents
 // are conservative visual reconstructions rather than a facility survey.
@@ -318,7 +319,7 @@ export function createLusailWorld(THREE, scene) {
   if (!Array.isArray(TRACK_POINTS) || TRACK_POINTS.length < 80) {
     throw new Error('Le tracé de Lusail est incomplet.');
   }
-  const { curve, sourcePoints } = prepareLusailCurve(THREE, TRACK_POINTS,
+  const { curve, sourcePoints } = prepareLusailCurve(THREE, mirrorTrackPointsX(TRACK_POINTS),
     TRACK_LENGTH_METERS);
   const { fractions: sourceFractions } = distanceFractions(sourcePoints);
   const samples = Array.from({ length: SAMPLE_COUNT }, (_, i) => curve.getPointAt(i / SAMPLE_COUNT));

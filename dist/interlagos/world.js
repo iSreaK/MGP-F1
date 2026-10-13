@@ -3,6 +3,7 @@ import { addInterlagosEnvironment } from './environment.js';
 import { addInterlagosGridDetails } from './grid-details.js';
 import { addInterlagosTrackside } from './trackside-details.js';
 import { prepareInterlagosCurve } from './geometry-smoothing.js';
+import { mirrorTrackPointsX } from '../track-orientation.js';
 
 // The FIA map fixes the plan-view order and F1 gives the 43 m T1–T5 relief.
 // Intermediate elevations, widths and runoff depths are visual estimates.
@@ -323,7 +324,7 @@ export function createInterlagosWorld(THREE, scene) {
   if (!Array.isArray(TRACK_POINTS) || TRACK_POINTS.length < 80) {
     throw new Error('Le tracé d’Interlagos est incomplet.');
   }
-  const { curve, sourcePoints } = prepareInterlagosCurve(THREE, TRACK_POINTS,
+  const { curve, sourcePoints } = prepareInterlagosCurve(THREE, mirrorTrackPointsX(TRACK_POINTS),
     TRACK_LENGTH_METERS);
   const { fractions: sourceFractions } = distanceFractions(sourcePoints);
   const samples = Array.from({ length: SAMPLE_COUNT }, (_, i) => curve.getPointAt(i / SAMPLE_COUNT));
@@ -428,8 +429,21 @@ export function createInterlagosWorld(THREE, scene) {
   const grid = addInterlagosGridDetails(THREE, scene, curve, sourcePoints, LANDMARKS, 0, half);
   const trackside = addInterlagosTrackside(THREE, scene, curve, frames, LANDMARKS,
     { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: -1 });
-  const environment = addInterlagosEnvironment(THREE, scene, curve, frames, LANDMARKS,
-    { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: -1, terrainHeightAt });
+  // Rebuild the venue from its original plan and reflect the complete group.
+  // This preserves every stand/infield relationship instead of changing side
+  // semantics independently after the centreline reflection.
+  const originalEnvironmentCurve = prepareInterlagosCurve(THREE, TRACK_POINTS,
+    TRACK_LENGTH_METERS).curve;
+  const originalEnvironmentFrames = Array.from({ length: SAMPLE_COUNT }, (_, i) => {
+    const point = originalEnvironmentCurve.getPointAt(i / SAMPLE_COUNT);
+    const forward = originalEnvironmentCurve.getTangentAt(i / SAMPLE_COUNT).setY(0).normalize();
+    return { point, forward, across: new THREE.Vector3(forward.z, 0, -forward.x) };
+  });
+  const environment = addInterlagosEnvironment(THREE, scene, originalEnvironmentCurve,
+    originalEnvironmentFrames, LANDMARKS,
+    { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: -1,
+      terrainHeightAt: (x, z, fallback) => terrainHeightAt(-x, z, fallback) });
+  environment.group.scale.x = -1;
   const bounds = new THREE.Box3().setFromPoints(samples).expandByScalar(180);
   const trackHeightAt = (u, x, z) => {
     const wrapped = ((u % 1) + 1) % 1;
