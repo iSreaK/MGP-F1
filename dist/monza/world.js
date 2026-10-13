@@ -8,6 +8,12 @@ const TRACK_WIDTH = 12;
 const TRACK_Y = 0.30;
 const SAMPLE_COUNT = 1500;
 
+// The source SVG was imported with its east/west axis reversed. Reflect the
+// centreline once, before any road, scenery, grid or vehicle geometry is
+// derived from it. Point order is deliberately unchanged, so lap progress and
+// the clockwise race direction keep the same timing semantics.
+const DISPLAY_MIRROR_X = -1;
+
 function textureFromPixels(THREE, width, height, paint) {
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -212,7 +218,8 @@ export function createMonzaWorld(THREE, scene) {
     throw new Error('La géométrie du tracé est incomplète.');
   }
   // The source polygon repeats its first point; CatmullRomCurve3 closes it itself.
-  const centerline = TRACK_POINTS.slice(0, -1);
+  const centerline = TRACK_POINTS.slice(0, -1)
+    .map(([x, z]) => [x * DISPLAY_MIRROR_X, z]);
   const polylineLengths = [0];
   for (let i = 1; i < centerline.length; i++) {
     const [ax, az] = centerline[i - 1];

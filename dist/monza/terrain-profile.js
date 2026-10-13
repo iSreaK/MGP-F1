@@ -1,5 +1,15 @@
-// Smoothed, illustrative elevation profile for Monza. The real circuit has
-// roughly 12.8 m of relief; no surveyed point-by-point height data is used.
+// Smoothed, illustrative elevation profile for Monza. Formula 1 documents
+// 12.8 m between the physical high and low points, with the main dip between
+// Lesmo 2 and Ascari, a downhill run to Parabolica and a gently rising main
+// straight. No surveyed point-by-point height data is available here.
+//
+// At a 2 km-wide overview, the physical 12.8 m range is visually lost. A
+// consistent 1.7x presentation scale keeps the longitudinal shape honest
+// while making the grades readable in the 3D cameras. Every road, terrain and
+// vehicle-contact calculation consumes this same scaled profile.
+export const DOCUMENTED_RELIEF_METERS = 12.8;
+export const RELIEF_PRESENTATION_SCALE = 1.7;
+
 // u is the fraction of the lap measured from the start/finish reference.
 const HEIGHT_KEYS = [
   [0, 0], [.08, 1.2], [.151, 2.4], [.235, 3.5],
@@ -16,7 +26,7 @@ export function trackElevationAt(u) {
     const [startU, startY] = HEIGHT_KEYS[i - 1];
     const t = (wrapped - startU) / (endU - startU);
     const blend = t * t * (3 - 2 * t);
-    return startY + (endY - startY) * blend;
+    return (startY + (endY - startY) * blend) * RELIEF_PRESENTATION_SCALE;
   }
   return 0;
 }
