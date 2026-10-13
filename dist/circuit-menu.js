@@ -9,13 +9,16 @@ if (circuitMenu) {
     ? '../' : './';
   const circuits = [
     { slug: 'monza', number: '01', name: 'Monza', detail: 'Italie · 5,793 km' },
-    { slug: 'singapore', number: '02', name: 'Singapour', detail: 'Marina Bay · 4,927 km' },
-    { slug: 'austin', number: '03', name: 'Austin', detail: 'États-Unis · 5,513 km' },
-    { slug: 'mexico', number: '04', name: 'Mexico', detail: 'Mexique · 4,304 km' },
-    { slug: 'interlagos', number: '05', name: 'Interlagos', detail: 'Brésil · 4,309 km' },
-    { slug: 'las-vegas', number: '06', name: 'Las Vegas', detail: 'Nevada · 6,201 km' },
-    { slug: 'lusail', number: '07', name: 'Lusail', detail: 'Qatar · 5,419 km' },
-    { slug: 'yas-marina', number: '08', name: 'Yas Marina', detail: 'Abou Dhabi · 5,281 km' },
+    { slug: 'madrid', number: '02', name: 'Madrid', detail: 'Madring · 5,414 km' },
+    { slug: 'baku', number: '03', name: 'Baku', detail: 'Azerbaïdjan · 6,003 km' },
+    { slug: 'sepang', number: '04', name: 'Sepang', detail: 'Malaisie · 5,543 km' },
+    { slug: 'singapore', number: '05', name: 'Singapour', detail: 'Marina Bay · 4,927 km' },
+    { slug: 'austin', number: '06', name: 'Austin', detail: 'États-Unis · 5,513 km' },
+    { slug: 'mexico', number: '07', name: 'Mexico', detail: 'Mexique · 4,304 km' },
+    { slug: 'interlagos', number: '08', name: 'Interlagos', detail: 'Brésil · 4,309 km' },
+    { slug: 'las-vegas', number: '09', name: 'Las Vegas', detail: 'Nevada · 6,201 km' },
+    { slug: 'lusail', number: '10', name: 'Lusail', detail: 'Qatar · 5,419 km' },
+    { slug: 'yas-marina', number: '11', name: 'Yas Marina', detail: 'Abou Dhabi · 5,281 km' },
   ];
 
   for (const circuit of circuits) {
