@@ -1,0 +1,3 @@
+import{writeFile}from'node:fs/promises';
+const files=await(await fetch('https://api.github.com/repos/bacinger/f1-circuits/contents/circuits')).json(); console.log(files.filter(x=>/shang|china|cn-|cn_/i.test(x.name)).map(x=>({name:x.name,url:x.download_url})));
+for(const name of ['drivers','starting_grid','session_result','laps','race_control','weather','position','stints','pit']){let url=`https://api.openf1.org/v1/${name}?session_key=11245`; let r=await fetch(url);for(let j=0;r.status===429&&j<6;j++){await new Promise(r=>setTimeout(r,4000));r=await fetch(url)} const text=await r.text();if(r.ok)await writeFile(`scripts/shanghai/${name}.json`,text);console.log(name,r.status,text.length,text.slice(0,130));await new Promise(r=>setTimeout(r,2100));}

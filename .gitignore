@@ -26,3 +26,15 @@ scripts/yas-marina/*.pdf
 scripts/yas-marina/*.png
 scripts/yas-marina/openf1-sessions.json
 scripts/yas-marina/source-circuit-paths.dart
+scripts/albert-park/raw/
+scripts/albert-park/source/*.pdf
+scripts/albert-park/source/*.png
+scripts/albert-park/source/*.txt
+scripts/albert-park/source/*.html
+scripts/shanghai/raw/
+scripts/shanghai/telemetry/
+scripts/shanghai-replay/raw/
+scripts/suzuka/raw/
+scripts/suzuka-replay/raw/
+scripts/miami/raw/
+scripts/miami-replay/raw/
