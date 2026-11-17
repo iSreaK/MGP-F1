@@ -55,9 +55,12 @@ function addLandscape(THREE,group,ground){
  const waterMaterial=new THREE.ShaderMaterial({uniforms:{time:{value:0}},vertexShader:`
    varying vec3 p;void main(){p=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
   fragmentShader:`precision highp float;uniform float time;varying vec3 p;
-   void main(){float a=sin(p.x*.17+p.z*.105+time*.6);float b=sin(p.x*.062-p.z*.21-time*.43);
-    float glint=pow(max(0.,a*b),18.);vec3 water=mix(vec3(.10,.28,.28),vec3(.26,.44,.39),.5+.18*a+.12*b);
-    gl_FragColor=vec4(water+vec3(.48,.56,.48)*glint*.36,1.);}`,
+   void main(){float warp=sin(p.x*.043-p.z*.027-time*.12);
+    float ripple=sin(p.x*.23+p.z*.13+warp*.9+time*.65);
+    float drift=sin(p.x*.017+p.z*.024+warp*.3);
+    vec3 water=vec3(.115,.295,.275)+vec3(.009,.016,.012)*drift;
+    float glint=smoothstep(.985,1.,ripple)*.035;
+    gl_FragColor=vec4(water+vec3(.36,.48,.42)*glint,1.);}`,
   side:THREE.DoubleSide});
  const water=new THREE.Mesh(waterGeometry,waterMaterial);water.name='Albert Lake water with three island cutouts';water.position.y=WATER_Y;water.receiveShadow=false;group.add(water);
  return{water,waterMaterial};
@@ -69,16 +72,24 @@ function addGrandstand(THREE,group,curve,u,side,length,seatColor,caption){
  stand.position.y-=.2;stand.rotation.y=Math.atan2(frame.forward.x,frame.forward.z)+(side<0?Math.PI:0);
  const steel=new THREE.MeshStandardMaterial({color:0x8f9999,roughness:.7,metalness:.35});
  const seating=new THREE.MeshStandardMaterial({color:seatColor,roughness:.8});
- const steps=[],seats=[],posts=[],braces=[];
+ const steps=[],seats=[],posts=[],braces=[],foundations=[];
+ const groundLocal=GROUND_Y-stand.position.y;
  for(let row=0;row<11;row++){
   const x=9+row*1.12,y=.4+row*.65;
   steps.push({position:[x,y,0]});seats.push({position:[x-.35,y+.48,0]});
  }
  instanceBatch(THREE,stand,caption+' stepped terraces',new THREE.BoxGeometry(1.2,.45,length),steel,steps);
  instanceBatch(THREE,stand,caption+' seat rows',new THREE.BoxGeometry(.62,.25,length-.8),seating,seats);
- for(let z=-length/2+4;z<length/2;z+=10){posts.push({position:[20,5,z]});braces.push({position:[15,3.8,z],rotation:[0,0,-.54]});}
+ for(let z=-length/2+4;z<length/2;z+=10){
+  const rearHeight=10-groundLocal;
+  posts.push({position:[20,groundLocal+rearHeight/2,z],scale:[1,rearHeight/10,1]});
+  braces.push({position:[15,3.8,z],rotation:[0,0,-.54]});
+  const height=.18-groundLocal;
+  for(const x of [9,14])foundations.push({position:[x,groundLocal+height/2,z],scale:[.36,height,.36]});
+ }
  instanceBatch(THREE,stand,caption+' rear load-bearing columns',new THREE.BoxGeometry(.28,10,.28),steel,posts);
  instanceBatch(THREE,stand,caption+' diagonal supports',new THREE.BoxGeometry(.24,8.2,.24),steel,braces);
+ instanceBatch(THREE,stand,caption+' grounded front foundations',new THREE.BoxGeometry(1,1,1),steel,foundations);
  const roof=new THREE.Mesh(new THREE.BoxGeometry(17,.32,length+3),new THREE.MeshStandardMaterial({color:0xdadfd6,metalness:.24,roughness:.7}));
  roof.name=caption+' supported canopy';roof.position.set(15,10.2,0);roof.rotation.z=-.07;stand.add(roof);
  const banner=new THREE.Mesh(new THREE.PlaneGeometry(length*.75,1.3),new THREE.MeshBasicMaterial({map:signTexture(THREE,caption.toUpperCase()),side:THREE.DoubleSide}));
@@ -90,13 +101,30 @@ function addBridge(THREE,group,curve,u,caption,width=4.5){
  bridge.position.copy(f.point);bridge.rotation.y=Math.atan2(f.forward.x,f.forward.z);
  const steel=new THREE.MeshStandardMaterial({color:0xd0d5cf,metalness:.45,roughness:.58});
  const deck=new THREE.Mesh(new THREE.BoxGeometry(43,.6,width),steel);deck.name='Bridge deck above 7.4 m clearance';deck.position.y=8.0;bridge.add(deck);
+ const groundLocal=GROUND_Y-f.point.y;
+ const treads=[],stairPosts=[];
+ const link=(name,a,b,thickness)=>{const start=new THREE.Vector3(...a),end=new THREE.Vector3(...b);
+  const mesh=new THREE.Mesh(new THREE.BoxGeometry(thickness,start.distanceTo(end),thickness),steel);
+  mesh.name=name;mesh.position.copy(start).add(end).multiplyScalar(.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),end.sub(start).normalize());bridge.add(mesh);
+ };
  for(const side of [-1,1]){
-  box(THREE,bridge,'Bridge pier',[1.2,7.7,width-1],[side*20,3.85,0],steel);
+  const pierHeight=7.7-groundLocal;
+  box(THREE,bridge,'Bridge pier',[1.2,pierHeight,width-1],[side*20,groundLocal+pierHeight/2,0],steel);
   box(THREE,bridge,'Bridge parapet',[43,1.8,.14],[0,9.15,side*(width/2-.08)],steel);
-  for(let i=0;i<15;i++){
-   box(THREE,bridge,'Stair tread',[1.2,.28,width-1],[side*(22+i*.7),7.5-i*.46,0],steel);
+  const count=Math.ceil((8.3-groundLocal)/.20),rise=(8.3-groundLocal)/count;
+  for(let i=0;i<count;i++){
+   const x=side*(21.5+(i+.5)*.32),y=8.3-(i+1)*rise;
+   treads.push({position:[x,y-.08,0]});
+   if(i%4===0)for(const z of [-width/2+.25,width/2-.25])stairPosts.push({position:[x,y+.5,z]});
+  }
+  for(const z of [-width/2+.25,width/2-.25]){
+   link('Bridge grounded stair stringer',[side*21.5,8.08,z],[side*(21.5+count*.32),groundLocal+.08,z],.24);
+   link('Bridge stair handrail',[side*21.5,9.3,z],[side*(21.5+count*.32),groundLocal+1,z],.10);
   }
  }
+ instanceBatch(THREE,bridge,'Bridge stair treads down to park level',new THREE.BoxGeometry(.34,.16,width-.45),steel,treads);
+ instanceBatch(THREE,bridge,'Bridge stair handrail uprights',new THREE.BoxGeometry(.07,1,.07),steel,stairPosts);
  const braces=[];
  for(let x=-20;x<=20;x+=4){for(const z of [-width/2,width/2])braces.push({position:[x,9.1,z],rotation:[0,0,Math.PI/4]});}
  instanceBatch(THREE,bridge,'Bridge truss braces',new THREE.BoxGeometry(.15,2.3,.15),steel,braces);
@@ -114,13 +142,23 @@ function addMsac(THREE,group){
  box(THREE,msac,'MSAC aquatic hall',[92,14,120],[0,7,0],wall);
  box(THREE,msac,'MSAC glazing belt',[.25,9,118],[46.2,8,0],glass);
  for(let i=0;i<3;i++){
-  const barrel=new THREE.Mesh(new THREE.CylinderGeometry(17,17,125,20,1,true,0,Math.PI),roof);
-  barrel.name='MSAC curved aquatic roof';barrel.rotation.z=Math.PI/2;barrel.rotation.x=Math.PI/2;
+  const vertices=[],indices=[];
+  for(let j=0;j<=24;j++){const angle=j/24*Math.PI;
+   for(const end of [-1,1])vertices.push(Math.cos(angle)*16,Math.sin(angle)*9,end*62.5);
+   if(j<24){const k=j*2;indices.push(k,k+1,k+2,k+1,k+3,k+2);}
+  }
+  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
+  geometry.setIndex(indices);geometry.computeVertexNormals();
+  const barrel=new THREE.Mesh(geometry,roof);barrel.material.side=THREE.DoubleSide;
+  barrel.name='MSAC curved aquatic roof';
   barrel.position.set(-29+i*29,14,0);msac.add(barrel);
  }
  box(THREE,msac,'MSAC indoor sports pavilion',[75,10,62],[-16,5,96],wall);
- box(THREE,msac,'MSAC external competition pool basin',[50,1,25],[77,.6,-23],new THREE.MeshStandardMaterial({color:0x61bec9,roughness:.26,metalness:.2}));
- box(THREE,msac,'MSAC outdoor pool deck',[64,.2,39],[77,.05,-23],wall);
+ box(THREE,msac,'MSAC outdoor pool deck',[64,.2,39],[77,.1,-23],wall);
+ box(THREE,msac,'MSAC external competition pool basin',[50,.10,25],[77,.26,-23],new THREE.MeshStandardMaterial({color:0x61bec9,roughness:.26,metalness:.2}));
+ const ropes=[];for(let i=1;i<10;i++)ropes.push({position:[77,.33,-35.5+i*2.5]});
+ instanceBatch(THREE,msac,'MSAC outdoor competition pool lane ropes',new THREE.BoxGeometry(49,.045,.045),
+  new THREE.MeshStandardMaterial({color:0xf0d7a2,roughness:.65}),ropes);
  group.add(msac);return msac;
 }
 
@@ -157,13 +195,18 @@ function addGolf(THREE,group,ground){
  golf.add(club);group.add(golf);return golf;
 }
 
-function addVegetation(THREE,group,ground){
+function addVegetation(THREE,group,curve,ground,roadside,exclusions){
  const random=seededRandom(19962026),trunks=[],canopies=[],palmTrunks=[],palmLeaves=[];
+ const reserved=exclusions.map(object=>{object.updateWorldMatrix(true,true);return new THREE.Box3().setFromObject(object).expandByScalar(5);});
  const placeTree=(x,z,scale,palm=false)=>{
   const nearest=ground.nearest(x,z);if(nearest.distance<27||isWater(x,z))return false;
+  if(reserved.some(bounds=>x>bounds.min.x&&x<bounds.max.x&&z>bounds.min.z&&z<bounds.max.z))return false;
+  const frame=frameAt(THREE,curve,nearest.u);
+  const side=Math.sign((x-nearest.point.x)*frame.across.x+(z-nearest.point.z)*frame.across.z)||1;
+  if(nearest.distance<roadside.wallOffsetAt(nearest.u,side)+7)return false;
   // Keep buildings, pit forecourt and primary grandstands free of trees.
   if(nearest.distance<85&&(x<0&&z>0))return false;
-  const y=GROUND_Y;
+  const y=roadside.heightAtOffset(nearest.u,side,nearest.distance);
   if(palm){palmTrunks.push({position:[x,y+5.3*scale,z],scale:[scale,scale,scale]});
    for(let leaf=0;leaf<7;leaf++)palmLeaves.push({position:[x,y+10.7*scale,z],rotation:[0,leaf/7*Math.PI*2,.52],scale:[scale,scale,scale]});
   }else{trunks.push({position:[x,y+2.7*scale,z],scale:[scale,scale,scale]});
@@ -216,7 +259,7 @@ function addSkyline(THREE,group){
  group.add(skyline);return skyline;
 }
 
-export function addAlbertParkEnvironment(THREE,scene,curve,ground,grid){
+export function addAlbertParkEnvironment(THREE,scene,curve,ground,grid,roadside){
  const group=new THREE.Group();group.name='Albert Park geographic venue';scene.add(group);
  const landscape=addLandscape(THREE,group,ground);
  const stands=[
@@ -227,12 +270,13 @@ export function addAlbertParkEnvironment(THREE,scene,curve,ground,grid){
   addGrandstand(THREE,group,curve,.88,-1,66,0xb1a976,'Turn 13 grandstand'),
  ];
  const bridges=[
-  addBridge(THREE,group,curve,.023,'Gate 1 wide pedestrian bridge 2026',9),
+  // Approximate the entrance bridge on the T1 approach, beyond the garages;
+  // placing it alongside the pit building put a support in the fast lane.
+  addBridge(THREE,group,curve,.05,'Gate 1 wide pedestrian bridge 2026',9),
   addBridge(THREE,group,curve,.244,'Northern Albert Park pedestrian bridge'),
   addBridge(THREE,group,curve,.62,'Lakeside Drive pedestrian bridge'),
  ];
  const msac=addMsac(THREE,group),stadium=addStadium(THREE,group),golf=addGolf(THREE,group,ground);
- const vegetation=addVegetation(THREE,group,ground);
  const waterfront=addWaterfront(THREE,group),skyline=addSkyline(THREE,group);
  // Three-level administration / race-control building beside the pit exit.
  const f=frameAt(THREE,curve,200/5278),raceControl=new THREE.Group();raceControl.name='Albert Park three-level race control';
@@ -240,8 +284,11 @@ export function addAlbertParkEnvironment(THREE,scene,curve,ground,grid){
  const concrete=new THREE.MeshStandardMaterial({color:0xd3d7cf,roughness:.75});
  const glass=new THREE.MeshStandardMaterial({color:0x426d76,metalness:.4,roughness:.24});
  box(THREE,raceControl,'Administration three storeys',[16,11,22],[0,5.5,0],concrete);
+ box(THREE,raceControl,'Race control grounded foundation',[16,1.5,22],[0,-.73,0],concrete);
  for(const y of [2.8,6.1,9.4])box(THREE,raceControl,'Race control observation windows',[.2,2.1,20],[8.15,y,0],glass);
  group.add(raceControl);
+ const vegetation=addVegetation(THREE,group,curve,ground,roadside,
+  [...stands,...bridges,msac,stadium,...golf.children,grid.group,raceControl]);
  return{group,water:landscape.water,grandstandCount:stands.length,bridgeCount:bridges.length,...vegetation,
   landmarks:{stands,bridges,msac,stadium,golf,waterfront,skyline,raceControl},
   update(time){landscape.waterMaterial.uniforms.time.value=time;}};

@@ -3,6 +3,7 @@ import { addMiamiEnvironment } from './environment.js';
 import { addMiamiGridDetails } from './grid-details.js';
 import { addMiamiTrackside } from './trackside-details.js';
 import { prepareMiamiCurve } from './geometry-smoothing.js';
+import { roadHalfWidthAt, cornerWindowMetres, runoffDepthMetres } from './road-layout.js';
 
 
 // The 2026 OpenF1 plan is checked against the FIA map. The small elevation
@@ -82,11 +83,16 @@ function asphaltTexture(THREE) {
   const random = seededRandom(2075);
   return textureFromPixels(THREE, 384, (ctx, size) => {
     const pixels = ctx.createImageData(size, size);
-    const patches = Float32Array.from({ length: 13 * 13 }, () => random() - .5);
+    const patches = Float32Array.from({ length: 12 * 12 }, () => random() - .5);
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
       const ix = Math.min(11, Math.floor(x / size * 12));
       const iy = Math.min(11, Math.floor(y / size * 12));
-      const value = 79 + patches[iy * 13 + ix] * 11 + (random() - .5) * 25;
+      // Interpolate a periodic noise field: hard cells looked like paving
+      // tiles when flying above what should be continuous racing asphalt.
+      const fx=smoothstep(x/size*12-ix),fy=smoothstep(y/size*12-iy);
+      const h=(dx,dy)=>patches[((iy+dy)%12)*12+(ix+dx)%12];
+      const shade=(h(0,0)*(1-fx)+h(1,0)*fx)*(1-fy)+(h(0,1)*(1-fx)+h(1,1)*fx)*fy;
+      const value = 79 + shade * 8 + (random() - .5) * 25;
       const index = (y * size + x) * 4;
       pixels.data[index] = value * .96;
       pixels.data[index + 1] = value;
@@ -351,13 +357,11 @@ export function createMiamiWorld(THREE, scene) {
     // A chord through neighbouring samples diverged by up to 6.8 degrees at
     // the sharpest corners, amplifying bends in offset edge lines and walls.
     const forward = curve.getTangentAt(i / SAMPLE_COUNT).setY(0).normalize();
-    return { point, forward, across: new THREE.Vector3(forward.z, 0, -forward.x) };
+    return { point, forward, u:i / SAMPLE_COUNT, across: new THREE.Vector3(forward.z, 0, -forward.x) };
   });
   const distances = [0];
   for (let i = 1; i < SAMPLE_COUNT; i++) distances.push(distances[i - 1] + samples[i - 1].distanceTo(samples[i]));
-  const half = Math.max(6, Math.min(8.8, Number(TRACK_WIDTH_METERS || 14) / 2));
-  // Preserve straight road edges; an invented varying width introduces waves.
-  const roadHalfWidthAt = () => half;
+  const half = roadHalfWidthAt(158 / TRACK_LENGTH_METERS);
 
   const terrain = addRollingTerrain(THREE, scene, samples);
   const terrainHeightAt = terrainHeightSampler(terrain);
@@ -377,25 +381,25 @@ export function createMiamiWorld(THREE, scene) {
   const overviewAccent = new THREE.MeshBasicMaterial({ color: 0x3f6986, transparent: true,
     opacity: 0, depthWrite: false, side: THREE.DoubleSide });
 
-  // Most MIAMI straights have a narrow paved edge followed by grass before
-  // the catch fence. The old 11 m asphalt shoulder on both sides read as one
-  // enormous grey slab, especially from the T1 approach camera.
+  // Miami's street-style walls sit beside narrow pavement strips. Width
+  // changes use long transitions, with a 10 m technical chicane and a wider
+  // 15.4 m stadium straight, instead of the former 12 m uniform road.
   const vergeHeight = (frame, offset) => {
     const x = frame.point.x + frame.across.x * offset;
     const z = frame.point.z + frame.across.z * offset;
     const ground = terrainHeightAt(x, z, frame.point.y - 1.08);
-    const blend = smoothstep((Math.abs(offset) - half - 4.6) / 6.4);
+    const blend = smoothstep((Math.abs(offset) - roadHalfWidthAt(frame.u) - 1.4) / 4.6);
     const y = (frame.point.y - .16) * (1 - blend)
       + (ground + .045) * blend;
     return y - frame.point.y;
   };
   createRibbon(THREE, scene, 'MIAMI paved shoulder', frames, distances,
-    -half - 4.6, half + 4.6, shoulder, { height: -.16, repeatMetres: 18 });
+    u => -roadHalfWidthAt(u)-1.4, u => roadHalfWidthAt(u)+1.4, shoulder, { height: -.16, repeatMetres: 18 });
   for (const [name, side] of [['left', -1], ['right', 1]]) {
-    for (const [index, a, b] of [[1, 4.6, 7.8], [2, 7.8, 11]]) {
+    for (const [index, a, b] of [[1, 1.4, 3.7], [2, 3.7, 6]]) {
       createRibbon(THREE, scene, `MIAMI ${name} mown safety verge ${index}`,
-        frames, distances, side < 0 ? -(half + b) : half + a,
-        side < 0 ? -(half + a) : half + b,
+        frames, distances, u => side < 0 ? -(roadHalfWidthAt(u) + b) : roadHalfWidthAt(u) + a,
+        u => side < 0 ? -(roadHalfWidthAt(u) + a) : roadHalfWidthAt(u) + b,
         grassVerge,
         { height: vergeHeight, repeatMetres: 18 });
     }
@@ -421,7 +425,7 @@ export function createMiamiWorld(THREE, scene) {
     const after = curve.getTangentAt((u + .0015) % 1).setY(0).normalize();
     const clockwise = before.x * after.z - before.z * after.x < 0;
     const side = clockwise ? 1 : -1;
-    const cornerWindow = [14,15].includes(corner) ? 8 : ([1,11,17].includes(corner) ? 32 : 22);
+    const cornerWindow = cornerWindowMetres(corner);
     const include = t => Math.abs(wrappedDelta(t,u))*TRACK_LENGTH_METERS < cornerWindow;
     const outside = -side;
     const orderedOffsets = (sign, near, far) => {
@@ -429,13 +433,13 @@ export function createMiamiWorld(THREE, scene) {
       return sign < 0 ? [at(far), at(near)] : [at(near), at(far)];
     };
     const [runoffFrom, runoffTo] = orderedOffsets(outside, .75,
-      [1, 11, 17].includes(corner) ? 14 : 9);
+      runoffDepthMetres(corner));
     createRibbon(THREE, scene, `MIAMI turn ${corner} paved runoff`, frames, distances,
       runoffFrom, runoffTo,
       blueRunoff, { include, height: -.037 });
     const [stripeFrom, stripeTo] = orderedOffsets(outside,
-      [1, 11, 17].includes(corner) ? 7 : 5.5,
-      [1, 11, 17].includes(corner) ? 8.5 : 6.5);
+      Math.min(.85,runoffDepthMetres(corner)*.6),
+      Math.min(1.1,runoffDepthMetres(corner)*.9));
     createRibbon(THREE, scene, `MIAMI turn ${corner} red runoff stripe`, frames, distances,
       stripeFrom, stripeTo,
       redRunoff, { include, height: -.023 });
@@ -445,9 +449,9 @@ export function createMiamiWorld(THREE, scene) {
       { include, height: .027, repeatMetres: 3.2 });
   }
 
-  const grid = addMiamiGridDetails(THREE, scene, curve, sourcePoints, LANDMARKS, 0, half);
+  const grid = addMiamiGridDetails(THREE, scene, curve, sourcePoints, LANDMARKS, 0, half, roadHalfWidthAt);
   const trackside = addMiamiTrackside(THREE, scene, curve, frames, LANDMARKS,
-    { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: -1 });
+    { trackY: 0, halfWidth: half, roadHalfWidthAt, gridU: grid.gridU, sourceFractions, pitSide: -1 });
   const environment = addMiamiEnvironment(THREE, scene, curve, frames, LANDMARKS,
     { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: -1 });
   const bounds = new THREE.Box3().setFromPoints(samples).expandByScalar(180);
@@ -463,6 +467,7 @@ export function createMiamiWorld(THREE, scene) {
     curve, samples, trackHeightAt, bounds,
     gridU: grid.gridU, gridPoint: grid.gridPoint, gridTangent: grid.gridTangent,
     trackMaterial: asphalt, overviewAccent,
+    pitLane:grid,
     environment, trackside,
   };
 }

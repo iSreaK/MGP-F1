@@ -108,6 +108,11 @@ function localize(vertex, segment, target) {
 }
 function inspect(mesh, category) {
   categories.add(category);
+  // Concrete walls and their debris fence are intentionally within 3 m of
+  // the tarmac in Miami. Require a positive 0.5 m road reserve for these two
+  // boundary structures; every building/pier/board retains the full 3 m.
+  const roadsideBoundary = category === 'Miami continuous concrete safety barriers'
+    || category === 'MIAMI catch-fence uprights';
   // The T3 bridge is intentionally above the race road. It must clear the
   // highest car/camera volume by 7 m; every other venue object stays beside
   // both driving surfaces even if its roof is very high.
@@ -137,8 +142,10 @@ function inspect(mesh, category) {
         localize(vertexA, segment, localA);
         localize(vertexB, segment, localB);
         localize(vertexC, segment, localC);
-        roadBox.min.set(-segment.halfWidth, -1.1, -segment.halfLength);
-        roadBox.max.set(segment.halfWidth, bridge ? 7 : 200,
+        const reserve = roadsideBoundary && segment.name === 'race road'
+          ? segment.halfWidth - 2.5 : segment.halfWidth;
+        roadBox.min.set(-reserve, -1.1, -segment.halfLength);
+        roadBox.max.set(reserve, bridge ? 7 : 200,
           segment.halfLength);
         triangle.set(localA, localB, localC);
         segmentChecks++;

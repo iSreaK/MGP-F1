@@ -1,5 +1,6 @@
 import { GRID_LANE_CENTER, GRID_SLOT_SPACING, PIT_START_LANE_CENTER, SHANGHAI_FINISH_BEFORE_START_METERS } from './grid-details.js';
 import { racingLineOffset } from './race-motion.js';
+import { pitLaneOffset } from './track-surface.js';
 import { LANDMARKS, TRACK_POINTS, TRACK_LENGTH_METERS } from './track-data.js';
 
 const clamp01 = value => Math.max(0, Math.min(1, value));
@@ -31,18 +32,12 @@ export function replayPitOffset(car, timeSec, session, pitStops, baseOffset) {
   const stop = pitStops?.find(pit =>
     timeSec >= pit.tSec - pit.laneDurationSec - 15 && timeSec <= pit.tSec + 15);
   if (!stop) return baseOffset;
-  let station = ((car.progressMeters % session.trackLengthMeters) + session.trackLengthMeters) % session.trackLengthMeters;
-  if (station > session.trackLengthMeters / 2) station -= session.trackLengthMeters;
-  // FIA-map pit entry between T19/T20 and pit exit on the T1 approach. Both
-  // visual tapers stay within the generated pit-road mesh; no GPS pit survey
-  // is available for precise stall positions.
-  const entry = smoothstep((station - PIT_ENTRY_STATION) / 65);
-  const exit = 1 - smoothstep((station - (PIT_EXIT_STATION - 65)) / 65);
-  const transitLane = PIT_START_LANE_CENTER;
+  const trackStation = (car.progressMeters + SHANGHAI_FINISH_BEFORE_START_METERS) % session.trackLengthMeters;
+  const offset = pitLaneOffset(trackStation);
+  const blend = offset / PIT_START_LANE_CENTER;
   const service = stop.redFlagTransit || !Number.isFinite(car.speedKph)
     ? 0 : 1 - smoothstep((car.speedKph - 8) / 24);
-  const pitLane = transitLane + (20 - transitLane) * service;
-  return baseOffset + (pitLane - baseOffset) * entry * exit;
+  return baseOffset * (1 - blend) + offset + 3 * service * blend;
 }
 
 export function rateLimitReplayOffset(previous, target, raceDeltaSec, frameLimit = .65) {

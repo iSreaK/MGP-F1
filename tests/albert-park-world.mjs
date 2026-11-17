@@ -16,7 +16,7 @@ assert.equal(LAKE_OUTLINES.length,1);assert.ok(LAKE_ISLANDS.length>=2);
 const terrain=scene.getObjectByName('Albert Park continuous ground with lake cutout');
 const road=scene.getObjectByName('Albert Park racing surface');assert.ok(terrain&&road);
 const ray=new THREE.Raycaster();let checked=0;
-for(let i=0;i<world.samples.length;i+=5){const p=world.samples[i];
+for(let i=0;i<world.samples.length;i++){const p=world.samples[i];
  ray.set(new THREE.Vector3(p.x,p.y+4,p.z),new THREE.Vector3(0,-1,0));
  const roadHit=ray.intersectObject(road)[0];assert.ok(roadHit,`road missing at ${i}`);
  const landHit=ray.intersectObject(terrain)[0];assert.ok(landHit,`terrain missing at ${i}`);

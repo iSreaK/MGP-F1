@@ -1,0 +1,48 @@
+{
+  "source": "https://github.com/bacinger/f1-circuits/blob/master/circuits/us-2022.geojson",
+  "originLongitude": -80.2389,
+  "originLatitude": 25.9579,
+  "metresPerDegreeLongitude": 100089.12544050324,
+  "metresPerDegreeLatitude": 111319.49079327358,
+  "registrationRmsMetres": 4.965,
+  "rotationDegrees": 30.460120966933303,
+  "determinant": 1.0000000000000004,
+  "anchors": {
+    "T1": {
+      "longitude": -80.235319,
+      "latitude": 25.95794,
+      "referencePosition": [
+        358.4191582021366,
+        -4.452779631957857
+      ],
+      "modelDistanceMetres": 5.203
+    },
+    "T8": {
+      "longitude": -80.244646,
+      "latitude": 25.956189,
+      "referencePosition": [
+        -575.1121147813345,
+        190.46764874731784
+      ],
+      "modelDistanceMetres": 2.869
+    },
+    "T16": {
+      "longitude": -80.229815,
+      "latitude": 25.95995,
+      "referencePosition": [
+        909.3097046268617,
+        -228.2049561262722
+      ],
+      "modelDistanceMetres": 11.08
+    },
+    "T17": {
+      "longitude": -80.242962,
+      "latitude": 25.960552,
+      "referencePosition": [
+        -406.56202753979187,
+        -295.2192895838961
+      ],
+      "modelDistanceMetres": 2.632
+    }
+  }
+}

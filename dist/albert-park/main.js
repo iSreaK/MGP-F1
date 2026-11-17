@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createDeferredModelField } from '../deferred-model-field.js';
 import { frameCircuitOverview } from '../circuit-framing.js';
 import { OrbitControls } from '../vendor/three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from '../vendor/three/examples/jsm/loaders/GLTFLoader.js';
@@ -185,6 +186,8 @@ if (renderer) {
   let freeRaceField = null;
   let redBullCar = null;
   const carInstances = new Map();
+  let fieldLoader = null;
+  let carViewRequest = 0;
   let lapProgress = 0;
   let cameraMode = 0;
   let introPlayed = !focusCarKey;
@@ -267,12 +270,23 @@ if (renderer) {
   function updateReplayAvailability() {
     const loadedCount = carCatalog.filter(car => carInstances.has(car.number)).length;
     const allCarsLoaded = loadedCount === carCatalog.length;
-    if (replayButton) replayButton.disabled = !allCarsLoaded;
-    raceButton.disabled = !allCarsLoaded || !raceController;
+    const waiting = fieldLoader?.started && !allCarsLoaded;
+    if (replayButton) replayButton.disabled = !!waiting;
+    raceButton.disabled = !!waiting || (!!fieldLoader?.started && !raceController);
     if (controlHelp) controlHelp.textContent = failedCarName
       ? `La voiture de ${failedCarName} n’a pas pu charger. Rechargez la page pour réessayer.`
-      : allCarsLoaded ? defaultControlHelp
+      : !fieldLoader?.started || allCarsLoaded ? defaultControlHelp
         : `Chargement des voitures : ${loadedCount}/${carCatalog.length}. La simulation et le replay seront bientôt disponibles.`;
+  }
+
+  function requestCars(action) {
+    if (!fieldLoader) return false;
+    if (fieldLoader.ready) return true;
+    const request = ++carViewRequest;
+    fieldLoader.load().then(() => {
+      if (request === carViewRequest) action();
+    }).catch(error => console.warn('Chargement du plateau interrompu.', error));
+    return false;
   }
 
   function replayPauseAt(timeSec) {
@@ -764,7 +778,7 @@ if (renderer) {
     }
 
     const carLoader = new GLTFLoader();
-    for (const entry of carCatalog) {
+    const loadEntry = entry => new Promise((resolve, reject) => {
       const gridDistance = entry.pitLaneStart ? -entry.pitStartProgressMeters
         : 14.1 + (entry.gridPosition - 1) * GRID_SLOT_SPACING;
       const startU = trackGap.behind(world.gridU, gridDistance);
@@ -799,6 +813,7 @@ if (renderer) {
           showCarIntro(car, startU, entry.pitLaneStart ? -7 : laneOffset > 0 ? 7 : -8);
         }
         updateReplayAvailability();
+        resolve(instance);
       }, undefined, error => {
         console.warn(`La monoplace de ${entry.driverName} est indisponible.`, error);
         failedCarName = entry.driverName;
@@ -808,8 +823,11 @@ if (renderer) {
           showCarIntro(redBullCar,
             trackGap.behind(world.gridU, 14.1 + (carByKey.redbull.gridPosition - 1) * GRID_SLOT_SPACING), -8);
         }
+        reject(error);
       });
-    }
+    });
+    fieldLoader = createDeferredModelField(carCatalog, loadEntry, updateReplayAvailability);
+    if (focusCarKey) fieldLoader.load().catch(error => console.warn(error));
 
     overviewButton.disabled = false;
     gridButton.disabled = false;
@@ -822,6 +840,7 @@ if (renderer) {
   }
 
   overviewButton.addEventListener('click', () => {
+    ++carViewRequest;
     exitReplay();
     exitRace();
     stopFlyover();
@@ -829,6 +848,7 @@ if (renderer) {
   });
 
   gridButton.addEventListener('click', () => {
+    if (!requestCars(() => gridButton.click())) return;
     exitReplay();
     exitRace();
     stopFlyover();
@@ -859,6 +879,7 @@ if (renderer) {
   });
 
   flyoverButton.addEventListener('click', () => {
+    ++carViewRequest;
     if (!world) return;
     exitReplay();
     exitRace();
@@ -871,11 +892,13 @@ if (renderer) {
     lastTime = performance.now();
   });
   raceButton.addEventListener('click', () => {
+    if (!requestCars(() => raceButton.click())) return;
     if (replayActive) exitReplay();
     if (racing) pauseRace();
     else startRace();
   });
   replayButton?.addEventListener('click', () => {
+    if (!requestCars(() => replayButton.click())) return;
     if (replayActive) exitReplay();
     else startReplay();
   });

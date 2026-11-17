@@ -4,12 +4,12 @@ import { createTrackGapLookup } from '../monza/track-gap.js';
 // 53 × 5,807 m minus the official 307.471 km race distance gives 300 m from
 // control line to standing-start line in the direction of travel.
 export const SUZUKA_FINISH_BEFORE_START_METERS = 300;
-// OpenF1 pre-start XY gives 7.91 m row spacing after FIA-lap calibration.
+// OpenF1 pre-start XY gives 7.84 m row spacing after FIA-lap calibration.
 // Use the same spacing for painted boxes and race-car poses.
 export const GRID_SLOT_SPACING = 7.84;
 export const GRID_LANE_CENTER = 2.40;
-// With the FIA map orientation, negative offsets lie to the driver's left,
-// on the pit side. Pole is on the right-hand side of the grid.
+// Positive across is the driver's left, negative is the right-hand pit side.
+// The historic pole position uses the same positive lane as the painted box.
 export const PIT_START_LANE_CENTER = -14.5;
 
 export function addSuzukaGridDetails(THREE, scene, curve, polyline, landmarks,
@@ -53,7 +53,8 @@ export function addSuzukaGridDetails(THREE, scene, curve, polyline, landmarks,
     for (const [from, to, x0, x1] of quads) {
       const a = frameAt(from), b = frameAt(to);
       const offset = vertices.length / 3;
-      for (const [f, x] of [[a, x0], [a, x1], [b, x0], [b, x1]]) {
+      const left=Math.min(x0,x1),right=Math.max(x0,x1);
+      for (const [f, x] of [[a, left], [a, right], [b, left], [b, right]]) {
         vertices.push(f.point.x + f.across.x * x, f.point.y + lift,
           f.point.z + f.across.z * x);
       }
@@ -115,10 +116,12 @@ export function addSuzukaGridDetails(THREE, scene, curve, polyline, landmarks,
   for (let s = entry; s < exit; s += 3.5) {
     const next = Math.min(exit, s + 3.5);
     const a = laneWidthAt(s), b = laneWidthAt(next);
-    const nearA = -halfWidth - .15 - 2.15 * a;
-    const farA = -halfWidth - .18 - 14.6 * a;
-    const nearB = -halfWidth - .15 - 2.15 * b;
-    const farB = -halfWidth - .18 - 14.6 * b;
+    // Collapse both tapers just inside the race surface. The former fixed
+    // 15cm gap left a visible crack at entry and exit.
+    const nearA = -halfWidth + .12 - 2.42 * a;
+    const farA = -halfWidth + .12 - 14.90 * a;
+    const nearB = -halfWidth + .12 - 2.42 * b;
+    const farB = -halfWidth + .12 - 14.90 * b;
     const f0 = frameAt(s), f1 = frameAt(next);
     const k = pitQuads.length / 3;
     for (const [frame, x] of [[f0, nearA], [f0, farA], [f1, nearB], [f1, farB]]) {
@@ -129,7 +132,7 @@ export function addSuzukaGridDetails(THREE, scene, curve, polyline, landmarks,
   const pitIndices = [];
   for (let i = 0; i < pitQuads.length / 12; i++) {
     const k = i * 4;
-    pitIndices.push(k, k + 2, k + 1, k + 1, k + 2, k + 3);
+    pitIndices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
   }
   const pitGeometry = new THREE.BufferGeometry();
   pitGeometry.setAttribute('position', new THREE.Float32BufferAttribute(pitQuads, 3));
@@ -168,8 +171,19 @@ export function addSuzukaGridDetails(THREE, scene, curve, polyline, landmarks,
   flatQuads('Pit lane edge paint', white, pitLine, -.007);
   flatQuads('Pit working-lane dashed divider', yellow, pitDashes, -.004);
   flatQuads('Pit speed-control lines', white, speedLines, .004);
+  const mergePositions=[],mergeIndices=[];
+  for(const[from,to]of [[entry,entry+taper],[exit-taper,exit]])for(let s=from;s<to;s+=1.5){
+    const next=Math.min(to,s+1.5),first=mergePositions.length/3;
+    for(const station of [s,next]){
+      const f=frameAt(station),edge=-halfWidth+.12-2.42*laneWidthAt(station);
+      for(const lateral of [edge-.06,edge+.06])mergePositions.push(f.point.x+f.across.x*lateral,f.point.y+.02,f.point.z+f.across.z*lateral);
+    }
+    mergeIndices.push(first,first+2,first+1,first+1,first+2,first+3);
+  }
+  const mergeGeometry=new THREE.BufferGeometry();mergeGeometry.setAttribute('position',new THREE.Float32BufferAttribute(mergePositions,3));mergeGeometry.setIndex(mergeIndices);mergeGeometry.computeVertexNormals();
+  const mergePaint=new THREE.Mesh(mergeGeometry,white);mergePaint.name='Suzuka continuous white pit entry and exit merge line';group.add(mergePaint);
 
-  // The FIA 2026 pit drawing has pole on the right of travel. The first box is
+  // The first pole box is on the left of travel. Its nose is
   // 12 m behind the start stripe; subsequent rows use the measured spacing.
   const boxes = [], guides = [], launchRubber = [];
   for (let position = 0; position < 22; position++) {
@@ -230,8 +244,10 @@ export function addSuzukaGridDetails(THREE, scene, curve, polyline, landmarks,
   // The permanent F1 Pit Building occupies the driver's right side of the straight.
   // Repeated bay geometry keeps its garage rhythm readable without dozens of
   // separate draw calls; the exact facade is a stylised reconstruction.
-  const bayLength = 11.1;
-  const bays = Array.from({ length: 34 }, (_, i) => -215 + i * bayLength);
+  // Official Suzuka course guide:48 permanent garage bays. Their total
+  // reconstructed frontage stays within the existing~375m apron.
+  const bayLength = 7.8;
+  const bays = Array.from({ length: 48 }, (_, i) => -215 + i * bayLength);
   instanceBoxes('Suzuka pit garage concrete bays', [16.8, 6.2, bayLength + .2],
     wall, bays, -halfWidth - 29.0, 3.1);
   instanceBoxes('Pit garage roller shutters', [.12, 4.8, bayLength - 1.1],
@@ -375,5 +391,6 @@ export function addSuzukaGridDetails(THREE, scene, curve, polyline, landmarks,
     gridPoint: frameAt(0).point,
     gridTangent: frameAt(0).forward,
     frameAt,
+    pitEntryStation:entry,pitExitStation:exit,laneWidthAt,
   };
 }

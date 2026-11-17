@@ -1,3 +1,5 @@
+import { CROSSOVER } from './track-data.js';
+import { SUZUKA_SAFETY_AREAS, SUZUKA_BRAKING_TURNS } from './track-sections.js';
 /**
  * Daytime Suzuka infrastructure. Permanent-circuit guardrails and tall catch
  * fences sit beyond broad run-off, rather than hugging the road like Monza's
@@ -5,14 +7,14 @@
  */
 export function addSuzukaTrackside(THREE, scene, curve, frames, landmarks, options = {}) {
   const { halfWidth = 6.5, gridU = 0, sourceFractions = [],
-    pitSide = -1 } = options;
+    pitSide = -1, terrainHeightAt=(x,z,fallback)=>fallback } = options;
   const group = new THREE.Group();
   group.name = 'Suzuka guardrails, catch fencing and distance boards';
   scene.add(group);
   const up = new THREE.Vector3(0, 1, 0);
   const helper = new THREE.Object3D();
   const lapLength = curve.getLength();
-  const baseGuardOffset = halfWidth + 11.8;
+  const baseGuardOffset = halfWidth + 7.8;
   const turnU = number => sourceFractions[landmarks?.turns?.[`T${number}`]?.index] ?? null;
   function frameAt(u) {
     const t = ((u % 1) + 1) % 1;
@@ -21,7 +23,7 @@ export function addSuzukaTrackside(THREE, scene, curve, frames, landmarks, optio
     const across = new THREE.Vector3(forward.z, 0, -forward.x);
     const quaternion = new THREE.Quaternion().setFromRotationMatrix(
       new THREE.Matrix4().makeBasis(across, up, forward));
-    return { point, forward, across, quaternion };
+    return { u:t, point, forward, across, quaternion };
   }
   function signedStation(u) {
     let delta = u - gridU;
@@ -31,31 +33,37 @@ export function addSuzukaTrackside(THREE, scene, curve, frames, landmarks, optio
   }
   const pitEntry = signedStation(sourceFractions[landmarks?.pitStraight?.entryIndex] ?? .94);
   const pitExit = signedStation(sourceFractions[landmarks?.pitStraight?.exitIndex] ?? .08);
-  const runoffCorners = Array.from({ length: 18 }, (_, index) => {
-    const number = index + 1;
+  const runoffCorners = SUZUKA_SAFETY_AREAS.map(area => {
+    const number = area.turn;
     const u = turnU(number);
     if (!Number.isFinite(u)) return null;
     const before = frameAt(u - .006).forward;
     const after = frameAt(u + .006).forward;
     const clockwise = before.x * after.z - before.z * after.x < 0;
     return { u, outside: clockwise ? -1 : 1,
-      span: number === 1 ? 85 : 46,
-      target: halfWidth + (number === 1 || number === 12 ? 40 : 24) };
+      span:area.span,near:area.near,target:halfWidth+area.far+3.5 };
   }).filter(Boolean);
   function guardOffsetAt(u, side) {
     let offset = baseGuardOffset;
+    const bridgeDistance=Math.abs(u*lapLength-CROSSOVER.upperStation);
+    const clamp01=v=>Math.max(0,Math.min(1,v));
+    if(bridgeDistance<100){const t=clamp01((bridgeDistance-45)/55);return 7.13+(baseGuardOffset-7.13)*t*t*(3-2*t);}
     for (const corner of runoffCorners) {
       if (side !== corner.outside) continue;
       let delta = u - corner.u;
       if (delta > .5) delta -= 1;
       if (delta < -.5) delta += 1;
-      const beyond = Math.abs(delta * lapLength) - corner.span;
-      if (beyond > 45) continue;
-      const t = Math.max(0, Math.min(1, beyond / 45));
-      const fade = 1 - t * t * (3 - 2 * t);
+      const distance=Math.abs(delta*lapLength);
+      if(distance>corner.span)continue;
+      const t=clamp01(1-distance/corner.span),fade=t*t*(3-2*t);
       offset = Math.max(offset, baseGuardOffset
         + (corner.target - baseGuardOffset) * fade);
     }
+    const before=frameAt(u-3/lapLength).forward,after=frameAt(u+3/lapLength).forward;
+    const k=Math.atan2(before.x*after.z-before.z*after.x,before.dot(after))/6;
+    // Inner guardrails at Degner and the hairpin must not fold across the
+    // road when the corner radius is smaller than a generic lateral offset.
+    if(k*side<0&&Math.abs(k)>.0001)offset=Math.min(offset,Math.max(halfWidth+1.1,.78/Math.abs(k)));
     return offset;
   }
   const pitOpening = (u, side) => {
@@ -87,25 +95,28 @@ export function addSuzukaTrackside(THREE, scene, curve, frames, landmarks, optio
     if (!cells.has(id)) cells.set(id, []);
     cells.get(id).push(point);
   }
-  function distanceToTrack(x, z) {
+  function distanceToTrack(x, z, y) {
     const cx = Math.floor(x / cellSize), cz = Math.floor(z / cellSize);
     let distance = Infinity;
     for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
       for (const point of cells.get(`${cx + dx},${cz + dz}`) ?? []) {
+        if(Number.isFinite(y)&&Math.abs(point.y-y)>4.8)continue;
         distance = Math.min(distance, Math.hypot(x - point.x, z - point.z));
       }
     }
     return distance;
   }
   function offsetPoint(frame, lateral, rise = 0) {
-    return frame.point.clone().addScaledVector(frame.across, lateral)
-      .addScaledVector(up, rise);
+    const p=frame.point.clone().addScaledVector(frame.across,lateral);
+    const bridgeDistance=Math.abs((frame.u??0)*lapLength-CROSSOVER.upperStation);
+    p.y=bridgeDistance<65?frame.point.y-.07:terrainHeightAt(p.x,p.z,frame.point.y-.45);
+    return p.addScaledVector(up,rise);
   }
-  function allowed(a, b, margin = halfWidth + 3.5) {
-    if (distanceToTrack(a.x, a.z) < margin
-      || distanceToTrack(b.x, b.z) < margin) return false;
+  function allowed(a, b, margin = halfWidth + .65) {
+    if (distanceToTrack(a.x, a.z,a.y) < margin
+      || distanceToTrack(b.x, b.z,b.y) < margin) return false;
     const mid = a.clone().add(b).multiplyScalar(.5);
-    return distanceToTrack(mid.x, mid.z) >= margin;
+    return distanceToTrack(mid.x, mid.z,mid.y) >= margin;
   }
 
   const vertices = [], normals = [], indices = [], colors = [];
@@ -116,8 +127,10 @@ export function addSuzukaTrackside(THREE, scene, curve, frames, landmarks, optio
   for (let i = 0; i < frames.length; i++) {
     const a = frames[i], b = frames[(i + 1) % frames.length];
     const u = i / frames.length;
+    a.u=u;b.u=(i+1)/frames.length;
     for (const side of [-1, 1]) {
       if (pitOpening(u, side)) continue;
+      if(Math.abs(u*lapLength-CROSSOVER.upperStation)<45)continue;
       const start = offsetPoint(a, side * guardOffsetAt(u, side));
       const end = offsetPoint(b, side * guardOffsetAt((i + 1) / frames.length,
         side));
@@ -179,11 +192,12 @@ export function addSuzukaTrackside(THREE, scene, curve, frames, landmarks, optio
     const a = frameAt(i / stepCount), b = frameAt((i + 1) / stepCount);
     for (const side of [-1, 1]) {
       if (pitOpening(i / stepCount, side)) continue;
+      if(Math.abs(i/stepCount*lapLength-CROSSOVER.upperStation)<65)continue;
       const start = offsetPoint(a, side * (guardOffsetAt(i / stepCount, side)
         + 3.2));
       const end = offsetPoint(b, side * (guardOffsetAt((i + 1) / stepCount,
         side) + 3.2));
-      if (!allowed(start, end, halfWidth + 4)) continue;
+      if (!allowed(start, end, halfWidth + 1)) continue;
       fencePosts.push({ point: start, quaternion: a.quaternion });
       for (const height of [1.2, 2, 2.8, 3.6, 4.4]) {
         wires.push(start.x, start.y + height, start.z,
@@ -218,22 +232,42 @@ export function addSuzukaTrackside(THREE, scene, curve, frames, landmarks, optio
   wireMesh.name = 'Suzuka catch-fence diagonal wire mesh';
   group.add(wireMesh);
 
+  // Separate impact protection from the steel rail. These low blocks sit in
+  // front of the guardrail at the gravel traps rather than over the asphalt.
+  const impact=[];
+  for(const area of SUZUKA_SAFETY_AREAS.filter(a=>[8,9,11,13,14,16].includes(a.turn))){
+    const u=turnU(area.turn),before=frameAt(u-.002).forward,after=frameAt(u+.002).forward;
+    const side=before.x*after.z-before.z*after.x>0?1:-1;
+    for(let metres=-30;metres<=30;metres+=2.4){const t=u+metres/lapLength,f=frameAt(t),p=offsetPoint(f,side*(guardOffsetAt(f.u,side)-.8));
+      if(distanceToTrack(p.x,p.z,p.y)>halfWidth+1.4)impact.push({point:p,quaternion:f.quaternion,turn:area.turn});
+    }
+  }
+  const impactMesh=new THREE.InstancedMesh(new THREE.BoxGeometry(.95,1.16,2.27),new THREE.MeshStandardMaterial({color:0xe7e6dd,roughness:.85}),impact.length);
+  impactMesh.name='Suzuka red white impact blocks outside gravel and chicane';
+  impact.forEach((item,i)=>{helper.position.copy(item.point);helper.position.y+=.58;helper.quaternion.copy(item.quaternion);helper.scale.set(1,1,1);helper.updateMatrix();impactMesh.setMatrixAt(i,helper.matrix);impactMesh.setColorAt(i,new THREE.Color(i%6<2?0xb8393f:0xe7e6dd));});
+  impactMesh.instanceMatrix.needsUpdate=true;group.add(impactMesh);
+  const tyres=[];
+  for(const corner of [8,9,11]){const u=turnU(corner),a=frameAt(u-.002).forward,b=frameAt(u+.002).forward,side=a.x*b.z-a.z*b.x>0?1:-1;for(let s=-18;s<=18;s+=1.0){const f=frameAt(u+s/lapLength),p=offsetPoint(f,side*(guardOffsetAt(f.u,side)-1.6));if(distanceToTrack(p.x,p.z,p.y)<halfWidth+1.8)continue;for(let layer=0;layer<3;layer++)tyres.push({p,y:.2+layer*.32});}}
+  const tyreMesh=new THREE.InstancedMesh(new THREE.TorusGeometry(.37,.15,6,14),new THREE.MeshStandardMaterial({color:0x343a37,roughness:1}),tyres.length);
+  tyreMesh.name='Degner and Hairpin layered tyre protection';tyres.forEach(({p,y},i)=>{helper.position.copy(p);helper.position.y+=y;helper.rotation.set(-Math.PI/2,0,0);helper.scale.set(1,1,1);helper.updateMatrix();tyreMesh.setMatrixAt(i,helper.matrix);});tyreMesh.instanceMatrix.needsUpdate=true;group.add(tyreMesh);
+
   // Braking boards flank the major stop zones. Each footprint is checked
   // against the complete circuit, avoiding a sign on a neighbouring corner.
   const signFace = new THREE.MeshBasicMaterial({ color: 0xf1f2ed,
     side: THREE.DoubleSide });
   const postMaterial = new THREE.MeshStandardMaterial({ color: 0x6d7779,
     metalness: .46, roughness: .6 });
-  const boardCorners = [1, 11, 12, 15, 20];
+  const boardCorners = SUZUKA_BRAKING_TURNS;
   let boardCount = 0;
   for (const corner of boardCorners) {
     const u = turnU(corner);
     if (!Number.isFinite(u)) continue;
     for (const distance of [150, 100, 50]) {
       const frame = frameAt(u - distance / lapLength);
-      const side = corner === 20 ? 1 : corner % 2 ? 1 : -1;
-      const point = offsetPoint(frame, side * (halfWidth + 17));
-      if (distanceToTrack(point.x, point.z) < halfWidth + 5) continue;
+      const before=frameAt(u-.002).forward,after=frameAt(u+.002).forward;
+      const side=before.x*after.z-before.z*after.x>0?1:-1;
+      const point = offsetPoint(frame, side * (guardOffsetAt(frame.u,side)+1.2));
+      if (distanceToTrack(point.x, point.z,point.y) < halfWidth + 1.2) continue;
       const sign = new THREE.Group();
       sign.name = `${distance} m braking board before Suzuka turn ${corner}`;
       sign.position.copy(point);
@@ -264,6 +298,6 @@ export function addSuzukaTrackside(THREE, scene, curve, frames, landmarks, optio
 
   const bridge = null;
   return { group, barrierCount, fencePostCount: fencePosts.length,
-    brakingBoardCount: boardCount, bridge,
+    brakingBoardCount: boardCount, bridge,impactBlockCount:impact.length,tyreCount:tyres.length,
     updateLighting() {}, setWetLighting() {} };
 }

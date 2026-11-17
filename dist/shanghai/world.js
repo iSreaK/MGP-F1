@@ -2,6 +2,7 @@ import { sculptPlaneToTrack } from '../terrain-follow.js';
 import { TRACK_POINTS, TRACK_LENGTH_METERS, TRACK_WIDTH_METERS, LANDMARKS } from './track-data.js';
 import { prepareShanghaiCurve } from './geometry-smoothing.js';
 import { addShanghaiEnvironment } from './environment.js';
+import { createShanghaiSurfaces, addShanghaiSafety } from './track-surface.js';
 
 const wrap01 = value => ((value % 1) + 1) % 1;
 
@@ -36,8 +37,8 @@ function createRibbon(THREE, parent, name, frames, from, to, material, height = 
   const uvs = [];
   const indices = [];
   const count = frames.length;
-  for (let i = 0; i < count; i++) {
-    const next = (i + 1) % count;
+  for (let i = 0; i < count - 1; i++) {
+    const next = i + 1;
     const offset = positions.length / 3;
     for (const [frame, across, v] of [
       [frames[i], from, 0], [frames[i], to, 1],
@@ -78,7 +79,7 @@ function createSegmentRibbon(THREE, parent, name, curve, centreU, halfLength,
 function addGrid(THREE, group, curve, gridU, halfWidth, config) {
   const white = new THREE.MeshBasicMaterial({ color: 0xf6f4e9, side: THREE.DoubleSide });
   const line = createSegmentRibbon(THREE, group, `${config.name} start line`, curve,
-    gridU, 2.2 / config.length, -halfWidth + .25, halfWidth - .25, white, .045);
+    gridU, .18 / config.length, -halfWidth + .25, halfWidth - .25, white, .045);
   line.renderOrder = 4;
   const paint = new THREE.Group();
   paint.name = `${config.name} starting grid`;
@@ -89,7 +90,7 @@ function addGrid(THREE, group, curve, gridU, halfWidth, config) {
     const point = curve.getPointAt(u);
     const forward = curve.getTangentAt(u).setY(0).normalize();
     const across = new THREE.Vector3(forward.z, 0, -forward.x);
-    const lane = slot % 2 ? config.gridLane : -config.gridLane;
+    const lane = slot % 2 ? -config.gridLane : config.gridLane;
     const box = new THREE.Group();
     box.name = `Grid box ${slot + 1}`;
     box.position.copy(point).addScaledVector(across, lane);
@@ -102,91 +103,6 @@ function addGrid(THREE, group, curve, gridU, halfWidth, config) {
     }
     paint.add(box);
   }
-  const pit = createSegmentRibbon(THREE, group, `${config.name} pit lane`, curve,
-    gridU, Math.min(.055, 360 / config.length),
-    config.pitSide * 12.6, config.pitSide * 21.4,
-    new THREE.MeshStandardMaterial({ color: 0x4c5155, roughness: .94, side: THREE.DoubleSide }), .005);
-  pit.receiveShadow = true;
-}
-
-function addBarriers(THREE, group, curve, length, halfWidth, urban) {
-  const material = new THREE.MeshStandardMaterial({
-    color: urban ? 0xb9b8b1 : 0xb8bcc0, roughness: .62, metalness: .35,
-  });
-  const geometry = new THREE.BoxGeometry(.16, 1.15, 5.8);
-  const count = Math.floor(length / 18) * 2;
-  const mesh = new THREE.InstancedMesh(geometry, material, count);
-  const helper = new THREE.Object3D();
-  let instance = 0;
-  for (const side of [-1, 1]) for (let station = 0; station < length; station += 18) {
-    if (side === 1 && (station < 650 || station > length - 350)) continue;
-    const u = station / length;
-    const point = curve.getPointAt(u);
-    const forward = curve.getTangentAt(u).setY(0).normalize();
-    const across = new THREE.Vector3(forward.z, 0, -forward.x);
-    helper.position.copy(point).addScaledVector(across, side * (halfWidth + (urban ? 2.1 : 5.8)));
-    helper.position.y += .54;
-    helper.rotation.y = Math.atan2(forward.x, forward.z);
-    helper.updateMatrix();
-    mesh.setMatrixAt(instance++, helper.matrix);
-  }
-  mesh.count = instance;
-  mesh.name = urban ? 'Street-circuit safety barriers' : 'Circuit guardrails';
-  mesh.castShadow = mesh.receiveShadow = true;
-  group.add(mesh);
-}
-
-function addGrandstand(THREE, group, position, rotation, length, color = 0xd8d8d4) {
-  const stand = new THREE.Group();
-  stand.position.copy(position);
-  stand.rotation.y = rotation;
-  const concrete = new THREE.MeshStandardMaterial({ color: 0x85898a, roughness: .86 });
-  const seats = new THREE.MeshStandardMaterial({ color, roughness: .72 });
-  for (let level = 0; level < 7; level++) {
-    const step = new THREE.Mesh(new THREE.BoxGeometry(length, .75, 1.8), concrete);
-    step.position.set(0, level * .72, level * 1.12);
-    step.castShadow = step.receiveShadow = true;
-    stand.add(step);
-    const row = new THREE.Mesh(new THREE.BoxGeometry(length - 1, .22, .78), seats);
-    row.position.set(0, level * .72 + .55, level * 1.12 - .15);
-    stand.add(row);
-  }
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(length + 3, .35, 10),
-    new THREE.MeshStandardMaterial({ color: 0xe4e5df, metalness: .38, roughness: .43 }));
-  roof.position.set(0, 8.5, 5.6);
-  roof.castShadow = true;
-  stand.add(roof);
-  group.add(stand);
-  return stand;
-}
-
-function addTrees(THREE, group, bounds, count, seed) {
-  const random = seededRandom(seed);
-  const trunkGeometry = new THREE.CylinderGeometry(.35, .52, 4.2, 5);
-  const crownGeometry = new THREE.IcosahedronGeometry(2.8, 1);
-  const trunks = new THREE.InstancedMesh(trunkGeometry,
-    new THREE.MeshStandardMaterial({ color: 0x55402b, roughness: 1 }), count);
-  const crowns = new THREE.InstancedMesh(crownGeometry,
-    new THREE.MeshStandardMaterial({ color: 0x2f6738, roughness: .95 }), count);
-  const helper = new THREE.Object3D();
-  for (let i = 0; i < count; i++) {
-    const x = bounds.min.x + random() * (bounds.max.x - bounds.min.x);
-    const z = bounds.min.z + random() * (bounds.max.z - bounds.min.z);
-    const scale = .7 + random() * 1.15;
-    helper.position.set(x, 1.7 * scale, z);
-    helper.scale.set(scale, scale, scale);
-    helper.rotation.y = random() * Math.PI;
-    helper.updateMatrix();
-    trunks.setMatrixAt(i, helper.matrix);
-    helper.position.y = 5.1 * scale;
-    helper.rotation.y += .4;
-    helper.updateMatrix();
-    crowns.setMatrixAt(i, helper.matrix);
-  }
-  trunks.castShadow = crowns.castShadow = false;
-  trunks.name = 'Venue trees trunks';
-  crowns.name = 'Venue tree canopy';
-  group.add(trunks, crowns);
 }
 
 export function createShanghaiWorld(THREE, scene) {
@@ -202,7 +118,7 @@ export function createShanghaiWorld(THREE, scene) {
   const samples = Array.from({ length: sampleCount }, (_, i) => curve.getPointAt(i / sampleCount));
   const frames = samples.map((point, i) => {
     const forward = curve.getTangentAt(i / sampleCount).setY(0).normalize();
-    return { point, forward, across: new THREE.Vector3(forward.z, 0, -forward.x) };
+    return { station: i / sampleCount * TRACK_LENGTH_METERS, u: i / sampleCount, point, forward, across: new THREE.Vector3(forward.z, 0, -forward.x) };
   });
   const half = TRACK_WIDTH_METERS / 2;
   const trackBounds = new THREE.Box3().setFromPoints(samples);
@@ -228,7 +144,7 @@ export function createShanghaiWorld(THREE, scene) {
     color: config.groundColor, roughness: .98, metalness: 0, vertexColors: false,
   });
   const groundGeometry = sculptPlaneToTrack(
-    new THREE.PlaneGeometry(span + 1900, span + 1900, 76, 76), samples,
+    new THREE.PlaneGeometry(span + 1900, span + 1900, 128, 128), samples,
     { baseHeight: -.45, roadClearance: .62, innerRadius: 62, outerRadius: 760, sampleStep: 9 });
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.name = `${config.name} terrain following the documented relief`;
@@ -236,44 +152,50 @@ export function createShanghaiWorld(THREE, scene) {
   ground.receiveShadow = true;
   venue.add(ground);
 
-  const shoulder = new THREE.MeshStandardMaterial({ color: config.shoulderColor,
-    roughness: .96, side: THREE.DoubleSide });
-  const asphalt = new THREE.MeshStandardMaterial({ map: asphaltTexture(THREE, config.seed),
-    color: 0xd7dbdc, roughness: .92, metalness: .015, side: THREE.DoubleSide });
-  const white = new THREE.MeshBasicMaterial({ color: 0xf0efe8, side: THREE.DoubleSide });
-  const curbRed = new THREE.MeshStandardMaterial({ color: config.curbColor,
-    roughness: .83, side: THREE.DoubleSide });
-  const overviewAccent = new THREE.MeshBasicMaterial({ color: config.accent,
-    transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+  const terrainVertices = groundGeometry.attributes.position;
+  const columns = groundGeometry.parameters.widthSegments + 1, lastCell = columns - 2;
+  const x0 = terrainVertices.getX(0), z0 = -terrainVertices.getY(0);
+  const dx = terrainVertices.getX(1) - x0, dz = -terrainVertices.getY(columns) - z0;
+  const groundHeightAt = (x, z) => {
+    const ux = (x - x0) / dx, uz = (z - z0) / dz;
+    if (ux < 0 || uz < 0 || ux > columns - 1 || uz > columns - 1) return -.45;
+    const ix = Math.min(lastCell, Math.floor(ux)), iz = Math.min(lastCell, Math.floor(uz));
+    const tx = ux - ix, tz = uz - iz, a = iz * columns + ix;
+    const y00 = terrainVertices.getZ(a), y10 = terrainVertices.getZ(a + 1);
+    const y01 = terrainVertices.getZ(a + columns), y11 = terrainVertices.getZ(a + columns + 1);
+    return tx + tz <= 1 ? y00 + tx * (y10 - y00) + tz * (y01 - y00)
+      : y11 + (1 - tx) * (y01 - y11) + (1 - tz) * (y10 - y11);
+  };
 
-  createRibbon(THREE, venue, `${config.name} paved shoulders`, frames,
-    -half - (config.urban ? 5 : 8), half + (config.urban ? 5 : 8), shoulder, -.075);
-  createRibbon(THREE, venue, `${config.name} overview silhouette`, frames,
-    -half - 4.6, half + 4.6, overviewAccent, .01);
-  createRibbon(THREE, venue, `${config.name} racing surface`, frames, -half, half, asphalt, 0);
-  createRibbon(THREE, venue, `${config.name} left edge line`, frames,
-    -half + .08, -half + .22, white, .025);
-  createRibbon(THREE, venue, `${config.name} right edge line`, frames,
-    half - .22, half - .08, white, .025);
-
-  const pointCount = TRACK_POINTS.length - 1;
-  for (const [id, turn] of Object.entries(LANDMARKS.turns)) {
-    const u = turn.index / pointCount;
-    const before = curve.getTangentAt(wrap01(u - .006)).setY(0).normalize();
-    const after = curve.getTangentAt(wrap01(u + .006)).setY(0).normalize();
-    const side = before.x * after.z - before.z * after.x < 0 ? 1 : -1;
-    createSegmentRibbon(THREE, venue, `${config.name} ${id} kerb`, curve, u,
-      24 / TRACK_LENGTH_METERS, side * (half + .03), side * (half + .75), curbRed, .035);
-  }
+  const surfaces = createShanghaiSurfaces(THREE, venue, curve, frames, asphaltTexture(THREE, config.seed));
+  const { asphalt, overviewAccent } = surfaces;
+  // Nearby sections have different heights. Nearest-road terrain alone let
+  // the higher T15 return lift the ground through the back straight by 39cm.
+  // Bound every terrain cell under a drivable/runoff vertex to that surface's
+  // lowest height. The denser mesh keeps this correction local and continuous.
+  venue.traverse(mesh => {
+    if (!mesh.userData.strip) return;
+    const vertices = mesh.geometry.attributes.position;
+    for (let i = 0; i < vertices.count; i++) {
+      const ix = Math.max(0, Math.min(lastCell, Math.floor((vertices.getX(i) - x0) / dx)));
+      const iz = Math.max(0, Math.min(lastCell, Math.floor((vertices.getZ(i) - z0) / dz)));
+      const a = iz * columns + ix, ceiling = vertices.getY(i) - .35;
+      for (const cell of [a, a + 1, a + columns, a + columns + 1])
+        terrainVertices.setZ(cell, Math.min(terrainVertices.getZ(cell), ceiling));
+    }
+  });
+  terrainVertices.needsUpdate = true;
+  groundGeometry.computeVertexNormals();
+  const safety = addShanghaiSafety(THREE, venue, curve, frames, surfaces.edgeWidths, groundHeightAt);
 
   const gridU = wrap01(config.finishBeforeStart / TRACK_LENGTH_METERS);
   addGrid(THREE, venue, curve, gridU, half, { ...config, length: TRACK_LENGTH_METERS });
-  addBarriers(THREE, venue, curve, TRACK_LENGTH_METERS, half, config.urban);
 
 
 
 
-  const environment = addShanghaiEnvironment(THREE, venue, curve, samples, trackBounds);
+
+  const environment = addShanghaiEnvironment(THREE, venue, curve, samples, trackBounds, groundHeightAt);
   const gridPoint = curve.getPointAt(gridU);
   const gridTangent = curve.getTangentAt(gridU).setY(0).normalize();
   const bounds = trackBounds.clone().expandByScalar(config.urban ? 320 : 240);
@@ -289,6 +211,6 @@ export function createShanghaiWorld(THREE, scene) {
     trackMaterial: asphalt, overviewAccent,
     environment,
     trackside: { group: venue, updateLighting() {}, setWetLighting() {} },
-    sourcePoints,
+    sourcePoints, surfaces, safety, groundHeightAt,
   };
 }

@@ -8,8 +8,9 @@ import { createElevationSampler } from '../elevation-profile.js';
 export const RELIEF_PRESENTATION_SCALE = 1.15;
 export const ELEVATION_PROFILE_METERS = Object.freeze([
   [0,.5],[400,.55],[900,.45],[1500,.3],[1866,.4],[2400,.55],
-  [2850,.55],[3150,.65],[3280,1.05],[3390,2.5],[3458,4.5],
-  [3483,4.1],[3558,1.05],[3660,.55],[4000,.5],[4800,.4],[5412,.5],
+  [2850,.55],[3150,.65],[3280,1.05],[3390,2.5],[3433,4.1],
+  [3446,4.5],[3458,4.35],[3483,3.6],[3558,1.05],[3660,.55],
+  [4000,.5],[4800,.4],[5412,.5],
 ]);
 const height = createElevationSampler(ELEVATION_PROFILE_METERS, {
   lapLength:5412, baseY:.36, presentationScale:RELIEF_PRESENTATION_SCALE,

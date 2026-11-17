@@ -15,26 +15,46 @@ export function frameAt(THREE,curve,u){const point=curve.getPointAt(wrap(u));
  return{point,forward,across,normal,u:wrap(u)};}
 export function makeGroundSampler(curve,count=1320){
  const samples=Array.from({length:count},(_,i)=>curve.getPointAt(i/count));
- const nearest=(x,z)=>{let best=samples[0],distanceSquared=Infinity;for(const point of samples){
-  const d=(point.x-x)**2+(point.z-z)**2;if(d<distanceSquared){distanceSquared=d;best=point;}}
-  return {point:best,distance:Math.sqrt(distanceSquared)};};
+ const cellSize=32,cells=new Map(),key=(x,z)=>x+','+z;
+ for(let i=0;i<count;i++){const a=samples[i],b=samples[(i+1)%count];
+  for(let x=Math.floor(Math.min(a.x,b.x)/cellSize);x<=Math.floor(Math.max(a.x,b.x)/cellSize);x++)
+   for(let z=Math.floor(Math.min(a.z,b.z)/cellSize);z<=Math.floor(Math.max(a.z,b.z)/cellSize);z++){
+    const k=key(x,z);if(!cells.has(k))cells.set(k,[]);cells.get(k).push(i);
+   }
+ }
+ const nearest=(x,z)=>{
+  let bestIndex=0,bestT=0,distanceSquared=Infinity;
+  const inspect=i=>{const a=samples[i],b=samples[(i+1)%count],dx=b.x-a.x,dz=b.z-a.z;
+   const t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/(dx*dx+dz*dz)));
+   const d=(a.x+t*dx-x)**2+(a.z+t*dz-z)**2;
+   if(d<distanceSquared){distanceSquared=d;bestIndex=i;bestT=t;}
+  };
+  const cx=Math.floor(x/cellSize),cz=Math.floor(z/cellSize),ids=new Set();
+  for(let a=cx-1;a<=cx+1;a++)for(let b=cz-1;b<=cz+1;b++)for(const id of cells.get(key(a,b))||[])ids.add(id);
+  for(const id of ids)inspect(id);
+  if(distanceSquared>cellSize*cellSize)for(let i=0;i<count;i++)if(!ids.has(i))inspect(i);
+  const a=samples[bestIndex],b=samples[(bestIndex+1)%count];
+  return{point:a.clone().lerp(b,bestT),distance:Math.sqrt(distanceSquared),u:(bestIndex+bestT)/count,index:bestIndex};
+ };
  return {samples,nearest,heightAt(x,z){const {point,distance}=nearest(x,z);
   return (point.y-.24)*(1-smooth((distance-45)/650))+1.65*smooth((distance-45)/650);}};
 }
-export function ribbon(THREE,parent,name,curve,start,end,from,to,material,{height=.01,step=3,closed=false,clipWater=false}={}){
+export function ribbon(THREE,parent,name,curve,start,end,from,to,material,{height=.01,step=3,closed=false,clipWater=false,excludePoint=null}={}){
  const length=curve.getLength();const count=Math.max(1,Math.ceil(Math.abs(end-start)*length/step));
  const positions=[],uvs=[],indices=[];
  for(let i=0;i<=count;i++){
   const u=start+(end-start)*i/count;const f=frameAt(THREE,curve,u);
-  for(const offset of [typeof from==='function'?from(wrap(u)):from,typeof to==='function'?to(wrap(u)):to]){
+  const edges=[typeof from==='function'?from(wrap(u)):from,typeof to==='function'?to(wrap(u)):to].sort((a,b)=>a-b);
+  for(const offset of edges){
    positions.push(f.point.x+f.across.x*offset,f.point.y+(typeof height==='function'?height(f,offset):height),f.point.z+f.across.z*offset);
    uvs.push(offset/12,(u-start)*length/12);
   }
   if(i<count){const k=i*2;indices.push(k,k+2,k+1,k+1,k+2,k+3);}
  }
- if(clipWater){for(let i=indices.length-3;i>=0;i-=3){const ids=indices.slice(i,i+3),points=ids.map(id=>[positions[id*3],positions[id*3+2]]);
+ if(clipWater||excludePoint){for(let i=indices.length-3;i>=0;i-=3){const ids=indices.slice(i,i+3),points=ids.map(id=>[positions[id*3],positions[id*3+2]]);
   const centre=[points.reduce((s,p)=>s+p[0]/3,0),points.reduce((s,p)=>s+p[1]/3,0)];
-  if(points.some(p=>isWater(...p))||isWater(...centre))indices.splice(i,3);
+  if((clipWater&&(points.some(p=>isWater(...p))||isWater(...centre)))
+    ||(excludePoint&&(points.some(p=>excludePoint(...p))||excludePoint(...centre))))indices.splice(i,3);
  }}
  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
  geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));geometry.setIndex(indices);geometry.computeVertexNormals();

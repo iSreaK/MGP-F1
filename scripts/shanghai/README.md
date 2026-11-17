@@ -85,3 +85,5 @@ headless scene/sky/weather construction, car-height scenery clearance,
 ground/road continuity, every replay's monotone progress and finite telemetry,
 the four DNS decisions, correct driver/model identities and free simulation.
 Browser visual QA is performed by the coordinating agent.
+
+The later geometry/venue revision and its measured defects are documented in [SURFACE-AUDIT.md](./SURFACE-AUDIT.md). Run both Shanghai test files for the complete surface and safety audit.

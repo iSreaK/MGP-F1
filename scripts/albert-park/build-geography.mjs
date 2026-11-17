@@ -21,6 +21,21 @@ spline.arcLengthDivisions=16000;spline.updateArcLengths();
 const scale=5278/spline.getLength();
 const count=1320;
 let points=Array.from({length:count},(_,i)=>spline.getPointAt(i/count).multiplyScalar(scale));
+// The map has 154 unevenly spaced vertices. Densifying alone preserves sharp
+// polygon joints (T11 had a 4.6 m radius, narrower than the road). A bounded
+// Gaussian fairing removes those map artefacts without rotating or reflecting
+// the geographic plan. Maximum displacement is recorded for review.
+const sigma=18,spacing=5278/count,radius=Math.ceil(3*sigma/spacing);
+const weights=Array.from({length:2*radius+1},(_,i)=>Math.exp(-.5*((i-radius)*spacing/sigma)**2));
+const totalWeight=weights.reduce((sum,value)=>sum+value,0);
+const rawPoints=points;
+points=rawPoints.map((point,index)=>weights.reduce((sum,weight,k)=>
+ sum.addScaledVector(rawPoints[(index+k-radius+count)%count],weight/totalWeight),new THREE.Vector3()));
+const fairingMaxDisplacement=Math.max(...points.map((p,i)=>p.distanceTo(rawPoints[i])));
+if(fairingMaxDisplacement>8.5)throw new Error('Albert Park fairing moved the geographic alignment too far');
+const fairCurve=new THREE.CatmullRomCurve3(points,true,'centripetal');
+fairCurve.arcLengthDivisions=16000;fairCurve.updateArcLengths();
+points=Array.from({length:count},(_,i)=>fairCurve.getPointAt(i/count));
 const planLength=points.reduce((sum,p,i)=>sum+p.distanceTo(points[(i+1)%count]),0);
 const correction=5278/planLength;
 for(const point of points)point.multiplyScalar(correction);
@@ -50,6 +65,7 @@ await writeFile(new URL('../../dist/albert-park/track-data.js',import.meta.url),
  `// Geographic source: bacinger/f1-circuits au-1953.geojson (5278 m configuration).\n`+
  `// x = east, z = south. Geographic north is -z: this is not a mirrored plan.\n`+
  `export const TRACK_LENGTH_METERS = 5278;\nexport const TRACK_WIDTH_METERS = 12;\n`+
+ `export const GEOGRAPHY_AUDIT = ${JSON.stringify({axis:'east/south',reflected:false,fairingSigmaMeters:sigma,fairingMaxDisplacementMeters:fairingMaxDisplacement})};\n`+
  `export const TRACK_POINTS = ${JSON.stringify(plan)};\n`+
  `export const LANDMARKS = ${JSON.stringify(landmarks,null,2)};\n`);
 
@@ -82,4 +98,4 @@ await writeFile(new URL('../../dist/albert-park/venue-data.js',import.meta.url),
  `export const GEO_ORIGIN = ${JSON.stringify(origin)};\nexport const GEO_SCALE = ${geographicScale};\n`+
  `export const LAKE_OUTLINES = ${JSON.stringify(lake.outer)};\nexport const LAKE_ISLANDS = ${JSON.stringify(lake.inner)};\n`+
  `export const MSAC_PARCEL = ${JSON.stringify(msac)};\n`);
-console.log({geographicScale,turns,lakeRings:lake.outer.length,islands:lake.inner.length});
+console.log({geographicScale,fairingMaxDisplacement,turns,lakeRings:lake.outer.length,islands:lake.inner.length});

@@ -40,7 +40,12 @@ await writeFile(path.join(dest, 'replay-roster.js'),
   `export const ALBERT_PARK_2026_TRACK_LENGTH_METERS = 5278;\n` +
   `export const ALBERT_PARK_2026_CONTROL_LINE_OFFSET_METERS = 0;\n`);
 
-for (const file of ['styles.css','race-motion.js','free-race-field.js','entity-spacing.js','sky.js','weather.js','main.js','grid-details.js','replay-lanes.js','index.html']) {
+// These circuit-specific modules are maintained directly: regenerating a
+// roster must never restore Austin's pit layout or eager GLB loading.
+for (const nativeFile of ['main.js','grid-details.js','replay-lanes.js','index.html']) {
+  await readFile(path.join(dest,nativeFile),'utf8');
+}
+for (const file of ['styles.css','race-motion.js','free-race-field.js','entity-spacing.js','sky.js','weather.js']) {
   let data = (await readFile(path.join(root,'dist/austin',file),'utf8')).replace(/\r\n/g,'\n');
   data = data.replaceAll('AUSTIN_2025','ALBERT_PARK_2026').replaceAll('AUSTIN_FINISH','ALBERT_PARK_FINISH')
     .replaceAll('Austin','AlbertPark').replaceAll('AUSTIN','ALBERT PARK').replaceAll('austin-2025','albert-park-2026')
@@ -50,60 +55,8 @@ for (const file of ['styles.css','race-motion.js','free-race-field.js','entity-s
     .replaceAll('COTA','ALBERT PARK').replaceAll('États-Unis','Australie')
     .replaceAll('5513','5278').replaceAll('5,513','5,278').replaceAll('5,51 KM','5,28 KM')
     .replaceAll('2025','2026');
-  if (file === 'main.js') {
-    data = data.replace("import * as THREE from 'three';", "import * as THREE from 'three';\nimport { frameCircuitOverview } from '../circuit-framing.js';")
-      .replace(/    initialTarget\.set\(center\.x, center\.y, center\.z\);[\s\S]*?    camera\.position\.copy\(initialPosition\);/, '    frameCircuitOverview(THREE, camera, world.bounds, initialPosition, initialTarget);\n    camera.position.copy(initialPosition);')
-      .replace('let replayTotalLaps = 56;', 'let replayTotalLaps = 58;')
-      .replace('gridU: world.gridU, trackLengthMeters: trackGap.lengthMeters,',
-        'gridU: world.gridU, trackLengthMeters: 5278,')
-      .replace('ALBERT_PARK_2026_ROSTER.some(driver => !replayData.drivers[driver.replayNumber])',
-        "ALBERT_PARK_2026_ROSTER.filter(driver => driver.status !== 'dns').some(driver => !replayData.drivers[driver.replayNumber])")
-      .replace('`${carCatalog.length} MODÈLES / 20 PILOTES`', "'19 MODÈLES / 20 PARTANTS'")
-      .replace('dont 19 représentés en 3D', 'dont 19 représentés en 3D ; deux non-partants')
-      .replace('selectedReplayNumber = requestedReplayNumber;\n      historicalReplay.setSpeed',
-        'selectedReplayNumber = replayData.drivers[requestedReplayNumber] ? requestedReplayNumber : 3;\n      for (const [number, instance] of carInstances) instance.controller.car.visible = !!replayData.drivers[number];\n      historicalReplay.setSpeed')
-      .replace('renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.7));',
-        'renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));')
-      .replace('renderer.shadowMap.enabled = true;', 'renderer.shadowMap.enabled = true;')
-      .replace('sun.shadow.mapSize.set(2048, 2048);','sun.shadow.mapSize.set(1024, 1024);')
-      .replace('controls.maxDistance = 5200;', 'controls.maxDistance = 11000;')
-      .replace('new THREE.PerspectiveCamera(41, 1, 0.5, 6500)', 'new THREE.PerspectiveCamera(41, 1, 0.5, 16000)')
-      .replace('let introPlayed = false;', "let introPlayed = !focusCarKey;")
-      .replace('new THREE.Fog(0xc4c9b8, 2800, 8000)', 'new THREE.Fog(0xbdced4, 8000, 20000)')
-      .replace('0xc4c9b8);', '0xbdced4);')
-      .replace('sky.follow(camera.position);',
-        `world?.environment?.update?.(now / 1000);
-    for (const [number, instance] of carInstances) {
-      const car = instance.controller.car;
-      const replayDriver = historicalReplay?.data.drivers[number];
-      const ended = replayActive && (!replayDriver || replayDriver.status === 'dns' || historicalReplay.timeSec > replayDriver.finishSec + 1);
-      car.visible = !ended && camera.position.distanceTo(car.position) < 850;
-    }
-    sky.follow(camera.position);`);
-  }
-  if (file === 'grid-details.js') {
-    data = data.replace('ALBERT_PARK_FINISH_BEFORE_START_METERS = 323','ALBERT_PARK_FINISH_BEFORE_START_METERS = 0')
-      .replace('position < 20','position < 22').replace('GRID_SLOT_SPACING = 7.91','GRID_SLOT_SPACING = 8.19')
-      .replace('length: 34','length: 41').replace('const bayLength = 11.1','const bayLength = 8.8')
-      .replace("fillText('MSC CRUISES'", "fillText('AUSTRALIAN GRAND PRIX'")
-      .replace('56 × 5,278 m minus the official 308.405 km race distance gives 323 m from\n// control line to standing-start line in the direction of travel.',
-        'The FIA 2026 competition visa places start and control on the same line.');
-  }
   if (file === 'sky.js') data = data.replace('SphereGeometry(6000','SphereGeometry(12000')
     .replace('Soft October daylight over the open Albert Park Grand Prix Circuit landscape.', 'Soft March daylight over Albert Park, Melbourne.');
-  if (file === 'index.html') {
-    data = data.replaceAll('AlbertPark','Albert Park')
-      .replaceAll('ALBERT PARK · ALBERT PARK','ALBERT PARK · MELBOURNE')
-      .replaceAll('du Albert Park Grand Prix Circuit à Albert Park','d’Albert Park à Melbourne').replaceAll('2026 : 19 des 20 pilotes','2026 : 19 des 20 partants')
-      .replace('Isack Hadjar figure au classement sans modèle 3D.',
-        'Hadjar figure au classement sans modèle 3D. Piastri et Hülkenberg sont non-partants.')
-      .replace('Piste permanente · montée vers le virage 1','Lac, parc et skyline de Melbourne · tracé horaire')
-      .replace('<strong>20</strong><span>VIRAGES</span>','<strong>14</strong><span>VIRAGES</span>')
-      .replace('<span class="brand-mark" aria-hidden="true">A</span>','<span class="brand-mark" aria-hidden="true">AP</span>')
-      .replace('aria-current="page"','')
-      .replace('</section>\n\n      <section class="race-hud"',
-        '<p class="venue-note">Relief naturel ≈ 2,6 m · représentation des bâtiments et largeurs indicative.</p><p class="map-attribution">Géographie © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></p></section>\n\n      <section class="race-hud"');
-  }
   await writeFile(path.join(dest,file),data);
 }
 await writeFile(path.join(dest,'styles.css'), await readFile(path.join(dest,'styles.css'),'utf8') +

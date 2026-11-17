@@ -11,9 +11,11 @@ const lap=laps.find(lap=>lap.lap_number===49),start=Date.parse(lap.date_start),d
 const first=raw[0],last=raw.at(-1),before=Date.parse(last.date)-start-duration,after=Date.parse(first.date)-start,t=-before/(after-before);
 raw.unshift({...first,date:lap.date_start,x:last.x+(first.x-last.x)*t,y:last.y+(first.y-last.y)*t,z:last.z+(first.z-last.z)*t});
 const map=JSON.parse(await readFile(new URL('./multiviewer.json',import.meta.url)));
-const L=5807,N=1162,angle=49*Math.PI/180,cs=Math.cos(angle),sn=Math.sin(angle);
-// Rotations preserve handedness; conversion from F1 XY to Three's ground XZ
-// uses Z=-Y so a camera from above reads the official map naturally.
+const registration=JSON.parse(await readFile(new URL('./geographic-registration.json',import.meta.url)));
+const geo=JSON.parse(await readFile(new URL('./geographic-reference.geojson',import.meta.url)));
+const L=5807,N=1162,angle=-registration.calibration.angleRadians,cs=Math.cos(angle),sn=Math.sin(angle);
+// Geographic registration fixes true east/south axes. The rotation is fitted
+// to the WGS84 circuit, not MultiViewer's arbitrary display rotation49deg.
 const tx=(x,y)=>new THREE.Vector3(x*cs-y*sn,0,-(x*sn+y*cs));
 const source=raw.map(p=>tx(p.x,p.y));
 const rawCurve=new THREE.CatmullRomCurve3(source,true,'centripetal',.18);
@@ -23,6 +25,23 @@ const centre=new THREE.Box3().setFromPoints(source).getCenter(new THREE.Vector3(
 const points=Array.from({length:N},(_,i)=>{const p=rawCurve.getPointAt(i/N).sub(centre).multiplyScalar(factor);return[p.x,p.z];});points.push(points[0]);
 const len=points.slice(1).reduce((v,p,i)=>v+Math.hypot(p[0]-points[i][0],p[1]-points[i][1]),0);
 const correction=L/len;for(let i=0;i<N;i++)points[i]=points[i].map(v=>v*correction);points[N]=points[0];
+const fittedScale=registration.calibration.metresPerRawUnit,worldScale=factor*correction;
+const mean=tx(registration.rawCentre.x,-registration.rawCentre.z);
+const geoCentre=registration.geographicCentre;
+const zeroEast=geoCentre.x+(centre.x-mean.x)*fittedScale;
+const zeroSouth=geoCentre.z+(centre.z-mean.z)*fittedScale;
+const radians=Math.PI/180,R=6371008.8;
+const originLatitude=registration.origin.latitude-zeroSouth/R/radians;
+const originLongitude=registration.origin.longitude+zeroEast/(R*Math.cos(registration.origin.latitude*radians))/radians;
+const anchors=Object.fromEntries([['mainStraightStart',0],['mainStraightEnd',2],['westStraightStart',127],['westStraightEnd',138]].map(([name,index])=>{
+ const [lon,lat]=geo.features[0].geometry.coordinates[index];
+ const east=(lon-registration.origin.longitude)*radians*R*Math.cos(registration.origin.latitude*radians),south=-(lat-registration.origin.latitude)*radians*R;
+ const x=(east-geoCentre.x)*worldScale/fittedScale+(mean.x-centre.x)*worldScale;
+ const z=(south-geoCentre.z)*worldScale/fittedScale+(mean.z-centre.z)*worldScale;
+ let nearest=0,best=Infinity;points.slice(0,N).forEach((p,j)=>{let d=(p[0]-x)**2+(p[1]-z)**2;if(d<best){best=d;nearest=j;}});
+ return[name,{longitude:lon,latitude:lat,index:nearest,residualMeters:Math.sqrt(best)}];
+}));
+const geographicFrame={axes:'x east / z south',source:registration.source,originLatitude,originLongitude,fitRmsMeters:registration.calibration.rms,rotationDegreesFromRawXZ:registration.calibration.angleDegrees,anchors};
 const cumulative=[0];for(let i=1;i<raw.length;i++)cumulative.push(cumulative.at(-1)+Math.hypot(raw[i].x-raw[i-1].x,raw[i].y-raw[i-1].y));
 const rawLength=cumulative.at(-1)+Math.hypot(raw[0].x-raw.at(-1).x,raw[0].y-raw.at(-1).y);
 const heights=raw.map((p,i)=>{let sum=0,weight=0;for(let k=-3;k<=3;k++){const w=4-Math.abs(k);sum+=raw[(i+k+raw.length)%raw.length].z*w;weight+=w;}return sum/weight;});
@@ -35,6 +54,6 @@ let crossing=null;
 for(let i=0;i<N;i++)for(let j=i+60;j<N;j++){const a=points[i],b=points[i+1],c=points[j],d=points[j+1],dx=b[0]-a[0],dz=b[1]-a[1],ex=d[0]-c[0],ez=d[1]-c[1],det=dx*ez-dz*ex;if(Math.abs(det)<1e-9)continue;const t=((c[0]-a[0])*ez-(c[1]-a[1])*ex)/det,u=((c[0]-a[0])*dz-(c[1]-a[1])*dx)/det;if(t>0&&t<1&&u>0&&u<1)crossing={lowerStation:(i+t)/N*L,upperStation:(j+u)/N*L,x:a[0]+t*dx,z:a[1]+t*dz};}
 if(!crossing)throw new Error('Suzuka must have exactly one figure-eight crossing');
 const round=v=>Math.round(v*10000)/10000;
-await writeFile(new URL('../../dist/suzuka/track-data.js',import.meta.url),`// Suzuka GP2026, OpenF1 session11253, Antonelli lap49 (29March2026).\n// A calibrated racing-line reconstruction, not a surveyed centreline.\n// 5807 m / 18 corners: Suzuka official course guide and FIA circuit map.\n// Original XY -> rotation49 degrees -> [X,-Y], never a mirrored display.\nexport const TRACK_LENGTH_METERS=5807;\nexport const TRACK_WIDTH_METERS=12;\nexport const TRACK_POINTS=${JSON.stringify(points.map(p=>p.map(round)))};\nexport const CROSSOVER=${JSON.stringify(crossing)};\nexport const LANDMARKS=${JSON.stringify(landmarks,null,2)};\n`);
+await writeFile(new URL('../../dist/suzuka/track-data.js',import.meta.url),`// Suzuka GP2026, OpenF1 session11253, Antonelli lap49 (29March2026).\n// A calibrated racing-line reconstruction, not a surveyed centreline.\n// 5807 m / 18 corners: Suzuka official course guide and FIA circuit map.\n// Geographic WGS84 fit fixes x east / z south; determinant-positive rotation, no reflection.\nexport const TRACK_LENGTH_METERS=5807;\nexport const TRACK_WIDTH_METERS=12;\nexport const GEOGRAPHIC_FRAME=${JSON.stringify(geographicFrame,null,2)};\nexport const TRACK_POINTS=${JSON.stringify(points.map(p=>p.map(round)))};\nexport const CROSSOVER=${JSON.stringify(crossing)};\nexport const LANDMARKS=${JSON.stringify(landmarks,null,2)};\n`);
 await writeFile(new URL('../../dist/suzuka/elevation-data.js',import.meta.url),`// OpenF1 Z low-pass stations, scaled to the documented52m course relief.\n// Z does not resolve the crossover: geometry-smoothing adds an explicit bridge.\n// https://superformula.net/sf2/circuit/suzuka (official course elevation:52m).\nexport const TELEMETRY_ELEVATION_METERS=${JSON.stringify(profile.map(p=>p.map(round)))};\n`);
 console.log(JSON.stringify({N,turns,crossing,len:L},null,2));

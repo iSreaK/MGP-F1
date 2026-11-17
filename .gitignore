@@ -30,6 +30,7 @@ scripts/albert-park/raw/
 scripts/albert-park/source/*.pdf
 scripts/albert-park/source/*.png
 scripts/albert-park/source/*.txt
+!scripts/albert-park/source/GEOJSON-LICENSE.txt
 scripts/albert-park/source/*.html
 scripts/shanghai/raw/
 scripts/shanghai/telemetry/

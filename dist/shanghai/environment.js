@@ -1,7 +1,7 @@
 // Shanghai's identity: the monumental main grandstand and bridges, lotus-leaf
 // satellite roofs and the garden-water paddock. Architecture is a recognisable
 // procedural reconstruction, not a dimensional model of the real buildings.
-export function addShanghaiEnvironment(THREE, venue, curve, samples, bounds) {
+export function addShanghaiEnvironment(THREE, venue, curve, samples, bounds, groundHeightAt = () => 0) {
   const group = new THREE.Group();
   group.name = 'Shanghai landmark architecture and water gardens';
   venue.add(group);
@@ -55,6 +55,26 @@ export function addShanghaiEnvironment(THREE, venue, curve, samples, bounds) {
     geometry.setIndex(indices); geometry.computeVertexNormals();
     const mesh = new THREE.Mesh(geometry, mats.roof);
     mesh.name = name; mesh.castShadow = true; parent.add(mesh);
+    // A real rim gives the wing and lotus roofs thickness in close views.
+    const rim = [], rimIndices = [], perimeter = [];
+    for (let x = 0; x <= nx; x++) perimeter.push(x);
+    for (let z = 1; z <= nz; z++) perimeter.push(z * (nx + 1) + nx);
+    for (let x = nx - 1; x >= 0; x--) perimeter.push(nz * (nx + 1) + x);
+    for (let z = nz - 1; z > 0; z--) perimeter.push(z * (nx + 1));
+    for (let i = 0; i < perimeter.length; i++) {
+      const a = perimeter[i] * 3, b = perimeter[(i + 1) % perimeter.length] * 3;
+      const offset = rim.length / 3;
+      rim.push(positions[a], positions[a + 1], positions[a + 2],
+        positions[b], positions[b + 1], positions[b + 2],
+        positions[a], positions[a + 1] - .55, positions[a + 2],
+        positions[b], positions[b + 1] - .55, positions[b + 2]);
+      rimIndices.push(offset, offset + 2, offset + 1, offset + 1, offset + 2, offset + 3);
+    }
+    const rimGeometry = new THREE.BufferGeometry();
+    rimGeometry.setAttribute('position', new THREE.Float32BufferAttribute(rim, 3));
+    rimGeometry.setIndex(rimIndices); rimGeometry.computeVertexNormals();
+    const fascia = new THREE.Mesh(rimGeometry, mats.roof);
+    fascia.name = `${name} structural edge`; fascia.castShadow = true; parent.add(fascia);
     return mesh;
   }
 
@@ -71,6 +91,17 @@ export function addShanghaiEnvironment(THREE, venue, curve, samples, bounds) {
     box(main, 'Grandstand roof supporting pier', x, 15, -29, 2.3, 30, 2.3, mats.concrete);
     box(main, 'Grandstand upper glazing', x, 22, -24, 38, 6, 1, mats.glass);
   }
+  const struts = new THREE.InstancedMesh(new THREE.BoxGeometry(1.15, 1, 1.15), mats.roof, 22);
+  struts.name = 'Shanghai wing roof diagonal structural struts';
+  const strutHelper = new THREE.Object3D(); let strutIndex = 0;
+  for (let x = -200; x <= 200; x += 40) for (const side of [-1, 1]) {
+    const a = new THREE.Vector3(x, 19, -29), b = new THREE.Vector3(x + side * 13, 30, 21);
+    strutHelper.position.copy(a).add(b).multiplyScalar(.5);
+    strutHelper.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+    strutHelper.scale.set(1, a.distanceTo(b), 1); strutHelper.updateMatrix();
+    struts.setMatrixAt(strutIndex++, strutHelper.matrix);
+  }
+  struts.castShadow = true; main.add(struts);
   const complex = orient(0);
   complex.name = 'Shanghai main straight pit and media complex';
   box(complex, 'Pit building continuous garage block', -15, 4.6, 35, 455, 9.2, 24, mats.concrete);
@@ -80,6 +111,27 @@ export function addShanghaiEnvironment(THREE, venue, curve, samples, bounds) {
     box(complex, 'Garage roller door', x, 2.3, 22.7, 9.5, 4.4, .35, mats.dark);
     box(complex, 'Pit wall segment', x, .63, 11, 11.5, 1.25, .35, mats.concrete);
   }
+  const teams = [
+    ['CADILLAC', 0xb1a28b], ['ALPINE', 0x277bd1], ['AUDI', 0xc92c3c],
+    ['HAAS', 0xc1c5c7], ['ASTON MARTIN', 0x216d5d], ['RACING BULLS', 0x386bc0],
+    ['WILLIAMS', 0x286ed2], ['FERRARI', 0xc92432], ['RED BULL', 0x253464],
+    ['MERCEDES', 0x4bb9ad], ['McLAREN', 0xe78c35],
+  ];
+  const pitSigns = new THREE.Group(); pitSigns.name = 'Shanghai eleven team garage fascias'; complex.add(pitSigns);
+  teams.forEach(([name, color], i) => {
+    const x = 205 - i * 41;
+    box(pitSigns, `${name} garage fascia`, x, 6.4, 22.2, 38, 1.8, .35,
+      new THREE.MeshStandardMaterial({ color, roughness: .7 }));
+    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 64;
+    const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, 512, 64);
+    ctx.fillStyle = '#f3f4f1'; ctx.font = 'bold 38px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(name, 256, 46);
+    const map = new THREE.CanvasTexture(canvas); map.colorSpace = THREE.SRGBColorSpace;
+    const label = new THREE.Mesh(new THREE.PlaneGeometry(33, 1.35),
+      new THREE.MeshBasicMaterial({ map, transparent: true, side: THREE.DoubleSide }));
+    label.name = `${name} garage lettering`; label.position.set(x, 6.4, 21.99);
+    label.rotation.y = Math.PI; pitSigns.add(label);
+  });
   for (const x of [-194, 194]) {
     // The elevated hospitality/media bridges are intentionally well above the
     // racing envelope. No supporting column is placed on the road or pit lane.
@@ -94,6 +146,11 @@ export function addShanghaiEnvironment(THREE, venue, curve, samples, bounds) {
   garden.name = 'Shanghai paddock water gardens and island pavilions';
   box(garden, 'Paddock reflecting basin embankment', 10, -1.6, 0, 400, 1, 104, mats.concrete, false);
   box(garden, 'Paddock reflecting water basin', 10, -.95, 0, 395, .12, 99, mats.water, false);
+  const gardenPaths = new THREE.Group(); gardenPaths.name = 'Paddock paths, garden decks and planted islands'; garden.add(gardenPaths);
+  box(gardenPaths, 'Central paddock garden promenade', 10, -.15, 0, 398, .35, 6, mats.concrete, false);
+  for (const z of [-53, 53]) box(gardenPaths, 'Water garden stone perimeter walk', 10, -.55, z,
+    407, .45, 5, mats.concrete, false);
+  const planting = new THREE.MeshStandardMaterial({ color: 0x437349, roughness: .98 });
   for (let i = 0; i < 10; i++) {
     const x = -160 + (i % 5) * 82, z = i < 5 ? -25 : 25;
     box(garden, 'Garden pavilion stone island', x, -.7, z, 42, .7, 30, mats.concrete);
@@ -101,6 +158,7 @@ export function addShanghaiEnvironment(THREE, venue, curve, samples, bounds) {
     const pavilion = new THREE.Group(); pavilion.position.set(x, 0, z); garden.add(pavilion);
     roof(pavilion, 'Garden pavilion curved silver roof', 39, 26, 5.8, 1.8);
     box(garden, 'Pavilion garden footbridge', x, -.25, 0, 4, .5, 98, mats.concrete, false);
+    box(gardenPaths, 'Pavilion island planting bed', x + 17, -.1, z, 4, .5, 21, planting, false);
   }
 
   function satellite(u, side, name, length) {
@@ -139,7 +197,7 @@ export function addShanghaiEnvironment(THREE, venue, curve, samples, bounds) {
     if (d < 38 || d > 220) continue;
     const local = complex.worldToLocal(new THREE.Vector3(x, 0, z));
     if (Math.abs(local.x) < 260 && local.z > -125 && local.z < 225) continue;
-    trees.push({ x, z, scale: .65 + random() * .8 });
+    trees.push({ x, z, groundHeight: groundHeightAt(x, z), scale: .65 + random() * .8 });
   }
   const trunks = new THREE.InstancedMesh(trunkGeometry,
     new THREE.MeshStandardMaterial({ color: 0x66513c, roughness: 1 }), trees.length);
@@ -148,9 +206,11 @@ export function addShanghaiEnvironment(THREE, venue, curve, samples, bounds) {
   trunks.name = 'Shanghai park tree trunks'; crowns.name = 'Shanghai park tree canopy';
   const helper = new THREE.Object3D();
   trees.forEach((tree, i) => {
-    helper.scale.setScalar(tree.scale); helper.position.set(tree.x, 1.5, tree.z);
+    helper.scale.setScalar(tree.scale);
+    helper.position.set(tree.x, tree.groundHeight + 1.75 * tree.scale, tree.z);
     helper.updateMatrix(); trunks.setMatrixAt(i, helper.matrix);
-    helper.position.y = 4.6 * tree.scale; helper.updateMatrix(); crowns.setMatrixAt(i, helper.matrix);
+    helper.position.y = tree.groundHeight + 4.6 * tree.scale;
+    helper.updateMatrix(); crowns.setMatrixAt(i, helper.matrix);
   });
   group.add(trunks, crowns);
   group.updateMatrixWorld(true);

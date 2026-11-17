@@ -37,8 +37,20 @@ node scripts/albert-park/build-speed-profile.mjs
 node --test tests/albert-park-*.mjs
 ```
 
-Les sources JSON de petite taille sont versionnées. Les réponses de télémétrie brutes dans `raw/`, PDF et images de référence sont exclus de Git ; le replay final et le profil de vitesse sont livrés dans `dist/`. Les générateurs de coque et de processeur réutilisent les modules d'Austin comme base technique ; les modules de géographie et de décor sont propres à Albert Park.
+Les sources JSON de petite taille sont versionnées. Les réponses de télémétrie brutes dans `raw/`, PDF et images de référence sont exclus de Git ; le replay final et le profil de vitesse sont livrés dans `dist/`. Le processeur et les modules communs réutilisent Austin comme base technique. `main.js`, `grid-details.js`, `replay-lanes.js` et `index.html` sont désormais propres à Albert Park et maintenus directement : `prepare-viewer.mjs` vérifie leur présence et ne les écrase pas.
 
 ## Vérifications
 
 Les tests couvrent fermeture et longueur du plan, orientation géographique, premier virage, relief, simulation, lac et îles, repères principaux, terrain sous la route, passages supérieurs, recul des murs et troncs, grille, DNS, progression des 202 760 échantillons de replay et classement final.
+
+## Reprise des routes, protections et volumes
+
+Le plan source comportait des joints anguleux malgré sa densification : le rayon local au virage 11 descendait à 4,6 m, faisant se replier les accotements d'une route plus large que ce rayon. Un lissage gaussien borné (sigma 18 m, déplacement maximal de 8,32 m **avant** le recalage de longueur) supprime ces défauts. Le facteur géographique final est 1,01264 et s'applique aussi au lac et au MSAC ; le circuit reste à 5 278 m, avec les mêmes axes est/sud et le même sens. Le rayon minimal rendu est désormais 18,81 m. Le profil d'altitude et le replay longitudinal sont inchangés.
+
+Les largeurs intermédiaires restent estimées. Les dégagements varient selon les virages et le rayon intérieur ; ils ne traversent plus la route voisine ou le lac. Des graviers texturés et des zones de gazon remplacent l'anneau générique. Les [notes du directeur de course FIA, V2, 7 mars 2026](https://www.fia.com/system/files/decision-document/2026_australian_grand_prix_-_race_directors_competition_notes_v2.pdf) guident notamment la bande de gazon à la sortie du virage 6, la suppression de l'apron béton à gauche de la sortie du 10 et la ligne de sortie des stands élargie. Les coordonnées exactes des murs ne sont pas publiées dans ces documents et ne sont pas présentées comme relevées.
+
+Les murs sont construits entre de vrais points de jonction tous les 4 m, avec grillage, postes et modules absorbants à l'extérieur des grandes zones de dégagement. Les deux pointes de la voie des stands chevauchent maintenant la chaussée au lieu de laisser une ouverture de 15 cm. Les faces des kerbs, des stands et de la voie des stands regardent vers le haut.
+
+Les tribunes, escaliers, garages et tour de contrôle ont des appuis jusqu'au sol. Le MSAC reçoit trois toits cintrés et un bassin extérieur avec dix lignes. Les arbres évitent les bâtiments et les zones de sécurité, et s'appuient sur le terrain local. La passerelle principale est représentée sur l'approche du premier virage au-delà des garages, car sa première position approximative mettait un pilier dans la voie des stands. Les trois positions de passerelles restent indicatives.
+
+Audit : 47 068 triangles de surfaces orientés vers le haut, 1 320 rayons terrain/chaussée, murs joints et pointes des stands raccordées. Le contrôle volumique inspecte 100 426 triangles de décor avec 63 930 tests contre les couloirs de circulation, sans obstacle sous 7,4 m. L'exploration et le survol ne chargent plus les GLB ; les modèles sont chargés à la demande, avec deux décodages simultanés au maximum.

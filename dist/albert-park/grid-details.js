@@ -1,14 +1,13 @@
 import { createTrackGapLookup } from '../monza/track-gap.js';
 
-// The FIA circuit map marks the control and standing-start lines separately.
 // The FIA 2026 competition visa places start and control on the same line.
 export const ALBERT_PARK_FINISH_BEFORE_START_METERS = 0;
-// OpenF1 pre-start XY gives 7.91 m row spacing after FIA-lap calibration.
+// OpenF1 pre-start XY gives approximately 8.19 m row spacing after lap calibration.
 // Use the same spacing for painted boxes and race-car poses.
 export const GRID_SLOT_SPACING = 8.19;
 export const GRID_LANE_CENTER = 2.40;
-// With the FIA map orientation, negative offsets lie to the driver's left,
-// on the pit side. Pole is on the right-hand side of the grid.
+// The local across vector points to the driver's left. The pit is on the
+// negative, driver's-right side; the same convention is used by replay poses.
 export const PIT_START_LANE_CENTER = -14.5;
 
 export function addAlbertParkGridDetails(THREE, scene, curve, polyline, landmarks,
@@ -49,7 +48,8 @@ export function addAlbertParkGridDetails(THREE, scene, curve, polyline, landmark
     if (!quads.length) return null;
     const vertices = [];
     const indices = [];
-    for (const [from, to, x0, x1] of quads) {
+    for (const [from, to, edge0, edge1] of quads) {
+      const x0=Math.min(edge0,edge1),x1=Math.max(edge0,edge1);
       const a = frameAt(from), b = frameAt(to);
       const offset = vertices.length / 3;
       for (const [f, x] of [[a, x0], [a, x1], [b, x0], [b, x1]]) {
@@ -114,9 +114,10 @@ export function addAlbertParkGridDetails(THREE, scene, curve, polyline, landmark
   for (let s = entry; s < exit; s += 3.5) {
     const next = Math.min(exit, s + 3.5);
     const a = laneWidthAt(s), b = laneWidthAt(next);
-    const nearA = -halfWidth - .15 - 2.15 * a;
+    // Overlap the racing asphalt at each tip, with a nonzero initial width.
+    const nearA = -halfWidth + .35 + (pitNearEdge + halfWidth - .35) * a;
     const farA = -halfWidth - .18 - 14.6 * a;
-    const nearB = -halfWidth - .15 - 2.15 * b;
+    const nearB = -halfWidth + .35 + (pitNearEdge + halfWidth - .35) * b;
     const farB = -halfWidth - .18 - 14.6 * b;
     const f0 = frameAt(s), f1 = frameAt(next);
     const k = pitQuads.length / 3;
@@ -128,7 +129,7 @@ export function addAlbertParkGridDetails(THREE, scene, curve, polyline, landmark
   const pitIndices = [];
   for (let i = 0; i < pitQuads.length / 12; i++) {
     const k = i * 4;
-    pitIndices.push(k, k + 2, k + 1, k + 1, k + 2, k + 3);
+    pitIndices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
   }
   const pitGeometry = new THREE.BufferGeometry();
   pitGeometry.setAttribute('position', new THREE.Float32BufferAttribute(pitQuads, 3));
@@ -167,9 +168,24 @@ export function addAlbertParkGridDetails(THREE, scene, curve, polyline, landmark
   flatQuads('Pit lane edge paint', white, pitLine, -.007);
   flatQuads('Pit working-lane dashed divider', yellow, pitDashes, -.004);
   flatQuads('Pit speed-control lines', white, speedLines, .004);
+  const mergePaint=[];
+  for(let s=exit-taper;s<exit;s+=2){
+    const end=Math.min(exit,s+2),a=laneWidthAt(s),b=laneWidthAt(end);
+    // The widened 2026 pit-exit line follows the actual taper, not its chord.
+    const x0=-halfWidth+.35+(pitNearEdge+halfWidth-.35)*a;
+    const x1=-halfWidth+.35+(pitNearEdge+halfWidth-.35)*b;
+    const f0=frameAt(s),f1=frameAt(end),k=mergePaint.length/3;
+    for(const [f,x] of [[f0,x0-.30],[f0,x0-.02],[f1,x1-.30],[f1,x1-.02]])
+      mergePaint.push(f.point.x+f.across.x*x,f.point.y+.015,f.point.z+f.across.z*x);
+  }
+  const mergeGeometry=new THREE.BufferGeometry();
+  mergeGeometry.setAttribute('position',new THREE.Float32BufferAttribute(mergePaint,3));
+  const mergeIndices=[];for(let i=0;i<mergePaint.length/12;i++){const k=i*4;mergeIndices.push(k,k+2,k+1,k+1,k+2,k+3);}
+  mergeGeometry.setIndex(mergeIndices);mergeGeometry.computeVertexNormals();
+  const mergeLine=new THREE.Mesh(mergeGeometry,white);mergeLine.name='Widened 2026 pit exit line';group.add(mergeLine);
 
-  // The FIA 2026 pit drawing has pole on the right of travel. The first box is
-  // 12 m behind the start stripe; subsequent rows use the measured spacing.
+  // The first box is 12 m behind the start stripe; subsequent rows use the
+  // telemetry-derived spacing. Across-positive boxes are on the driver's left.
   const boxes = [], guides = [], launchRubber = [];
   for (let position = 0; position < 22; position++) {
     const station = -12.0 - GRID_SLOT_SPACING * position;
@@ -187,7 +203,7 @@ export function addAlbertParkGridDetails(THREE, scene, curve, polyline, landmark
     }
   }
   flatQuads('AlbertPark grid launch rubber', rubber, launchRubber, .026);
-  flatQuads('Twenty staggered right-pole grid boxes', white, boxes, .039);
+  flatQuads('Twenty-two staggered grid boxes', white, boxes, .039);
   flatQuads('Grid alignment markers', yellow, guides, .044);
 
   const finish = [];
@@ -200,7 +216,7 @@ export function addAlbertParkGridDetails(THREE, scene, curve, polyline, landmark
     ]);
   }
   flatQuads('FIA control and chequered finish line', white, finish, .048);
-  flatQuads('Separate standing start line', white,
+  flatQuads('Standing start line at FIA control line', white,
     [[-.16, .16, -halfWidth, halfWidth]], .048);
 
   function instanceBoxes(name, dimensions, material, stations, lateral, centreY) {
@@ -226,13 +242,17 @@ export function addAlbertParkGridDetails(THREE, scene, curve, polyline, landmark
     return mesh;
   }
 
-  // The permanent F1 Pit Building occupies the driver's left side of the straight.
+  // The F1 pit building occupies the driver's right side of the straight.
   // Repeated bay geometry keeps its garage rhythm readable without dozens of
   // separate draw calls; the exact facade is a stylised reconstruction.
   const bayLength = 8.8;
   const bays = Array.from({ length: 41 }, (_, i) => -215 + i * bayLength);
   instanceBoxes('AlbertPark pit garage concrete bays', [16.8, 6.2, bayLength + .2],
     wall, bays, -halfWidth - 29.0, 3.1);
+  // Foundations reach below the lowest park ground, covering the subtle
+  // difference between the raised street surface and the broad park base.
+  instanceBoxes('Albert Park pit building grounded foundations', [16.8, 1.5, bayLength + .2],
+    wall, bays, -halfWidth - 29.0, -.73);
   instanceBoxes('Pit garage roller shutters', [.12, 4.8, bayLength - 1.1],
     garage, bays, -halfWidth - 20.5, 2.5);
   instanceBoxes('Pit garage upper glazing', [15.4, 4.0, bayLength - .28],
@@ -244,7 +264,7 @@ export function addAlbertParkGridDetails(THREE, scene, curve, polyline, landmark
   instanceBoxes('Pit building dark fascia', [.48, .55, bayLength + .1],
     steel, bays, -halfWidth - 19.85, 10.0);
 
-  // The ALBERT PARK paddock is a long 34-garage hospitality building, not a single
+  // The ALBERT PARK paddock is a long 41-bay hospitality building, not a single
   // blank block. Door seams, vertical piers, balcony rails and rooftop plant
   // are instanced so the near-camera facade has detail without 300 draw calls.
   const bayBoundaries = Array.from({ length: bays.length + 1 },

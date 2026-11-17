@@ -13,7 +13,7 @@ export const GRID_LANE_CENTER = 2.40;
 export const PIT_START_LANE_CENTER = -14.5;
 
 export function addMiamiGridDetails(THREE, scene, curve, polyline, landmarks,
-  trackY = .36, halfWidth = 5.0) {
+  trackY = .36, halfWidth = 5.0, roadHalfWidthAt = () => halfWidth) {
   const group = new THREE.Group();
   group.name = 'Miami start, finish and pit complex';
   scene.add(group);
@@ -54,8 +54,9 @@ export function addMiamiGridDetails(THREE, scene, curve, polyline, landmarks,
       const a = frameAt(from), b = frameAt(to);
       const offset = vertices.length / 3;
       for (const [f, x] of [[a, x0], [a, x1], [b, x0], [b, x1]]) {
-        vertices.push(f.point.x + f.across.x * x, f.point.y + lift,
-          f.point.z + f.across.z * x);
+        const lateral=typeof x==='function'?x(f.u):x;
+        vertices.push(f.point.x + f.across.x * lateral, f.point.y + lift,
+          f.point.z + f.across.z * lateral);
       }
       indices.push(offset, offset + 2, offset + 1,
         offset + 1, offset + 2, offset + 3);
@@ -105,6 +106,8 @@ export function addMiamiGridDetails(THREE, scene, curve, polyline, landmarks,
   const pitNearEdge = -halfWidth - .15 - 2.15;
   const pitFarEdge = -halfWidth - .18 - 14.6;
   const pitWorkingDivider = -16.25;
+  const nearAt = u => -roadHalfWidthAt(u)-.15-2.15;
+  const farAt = u => -roadHalfWidthAt(u)-.18-14.6;
   const smooth = (a, b, value) => {
     const t = Math.max(0, Math.min(1, (value - a) / (b - a)));
     return t * t * (3 - 2 * t);
@@ -115,11 +118,13 @@ export function addMiamiGridDetails(THREE, scene, curve, polyline, landmarks,
   for (let s = entry; s < exit; s += 3.5) {
     const next = Math.min(exit, s + 3.5);
     const a = laneWidthAt(s), b = laneWidthAt(next);
-    const nearA = -halfWidth - .15 - 2.15 * a;
-    const farA = -halfWidth - .18 - 14.6 * a;
-    const nearB = -halfWidth - .15 - 2.15 * b;
-    const farB = -halfWidth - .18 - 14.6 * b;
     const f0 = frameAt(s), f1 = frameAt(next);
+    // End tapers meet the actual variable-width road edge; the previous
+    // fixed-width lane left a gap when the T1–2 section became narrower.
+    const nearA = -roadHalfWidthAt(f0.u) - .005 - 2.295 * a;
+    const farA = -roadHalfWidthAt(f0.u) - .015 - 14.765 * a;
+    const nearB = -roadHalfWidthAt(f1.u) - .005 - 2.295 * b;
+    const farB = -roadHalfWidthAt(f1.u) - .015 - 14.765 * b;
     const k = pitQuads.length / 3;
     for (const [frame, x] of [[f0, nearA], [f0, farA], [f1, nearB], [f1, farB]]) {
       pitQuads.push(frame.point.x + frame.across.x * x, frame.point.y - .016,
@@ -154,8 +159,8 @@ export function addMiamiGridDetails(THREE, scene, curve, polyline, landmarks,
     const end = Math.min(exit - taper, s + 3.5);
     // Both edge lines stay on the generated pit asphalt. The former outside
     // line was roughly two metres beyond the lane's visible outer edge.
-    pitLine.push([s, end, pitFarEdge + .05, pitFarEdge + .15]);
-    pitLine.push([s, end, pitNearEdge - .15, pitNearEdge - .05]);
+    pitLine.push([s, end, u => farAt(u)+.05, u => farAt(u)+.15]);
+    pitLine.push([s, end, u => nearAt(u)-.15, u => nearAt(u)-.05]);
     if (Math.floor((s - entry) / 3.5) % 3 === 0) {
       pitDashes.push([s, Math.min(s + 2, end), pitWorkingDivider - .055,
         pitWorkingDivider + .055]);
@@ -210,7 +215,8 @@ export function addMiamiGridDetails(THREE, scene, curve, polyline, landmarks,
     mesh.name = name;
     for (let i = 0; i < stations.length; i++) {
       const frame = frameAt(stations[i]);
-      helper.position.copy(frame.point).addScaledVector(frame.across, lateral);
+      helper.position.copy(frame.point).addScaledVector(frame.across,
+        typeof lateral==='function'?lateral(frame.u):lateral);
       helper.position.y = frame.point.y + centreY;
       const slope = curve.getTangentAt(frame.u).normalize();
       const normal = new THREE.Vector3().crossVectors(slope, frame.across).normalize();
@@ -227,11 +233,12 @@ export function addMiamiGridDetails(THREE, scene, curve, polyline, landmarks,
     return mesh;
   }
 
-  // The permanent F1 Pit Building occupies the driver's left side of the straight.
+  // The Paddock Club and garages occupy the driver's right of this straight.
   // Repeated bay geometry keeps its garage rhythm readable without dozens of
   // separate draw calls; the exact facade is a stylised reconstruction.
-  const bayLength = 11.1;
-  const bays = Array.from({ length: 34 }, (_, i) => -215 + i * bayLength);
+  // FIA 2026 pit drawing numbers 37 bays, including the FIA allocation.
+  const bayLength = 10.2;
+  const bays = Array.from({ length: 37 }, (_, i) => -215 + i * bayLength);
   instanceBoxes('Miami pit garage concrete bays', [16.8, 6.2, bayLength + .2],
     wall, bays, -halfWidth - 29.0, 3.1);
   instanceBoxes('Pit garage roller shutters', [.12, 4.8, bayLength - 1.1],
@@ -244,8 +251,16 @@ export function addMiamiGridDetails(THREE, scene, curve, polyline, landmarks,
     light, bays, -halfWidth - 20.15, 5.9);
   instanceBoxes('Pit building dark fascia', [.48, .55, bayLength + .1],
     steel, bays, -halfWidth - 19.85, 10.0);
+  instanceBoxes('Miami Paddock Club third floor glazing', [15.4,3.0,bayLength-.25],
+    glass,bays,-halfWidth-29.0,12.0);
+  instanceBoxes('Miami Paddock Club white upper roof', [19,.45,bayLength+.2],
+    new THREE.MeshStandardMaterial({color:0xf3f1e7,roughness:.72}),bays,-halfWidth-29,13.9);
+  instanceBoxes('Miami Paddock Club upper terrace slabs', [3.4,.25,bayLength+.04],
+    paleConcrete,bays,-halfWidth-20.8,10.6);
+  instanceBoxes('Miami Paddock Club upper balcony glazing', [.15,1.1,bayLength-.35],
+    glass,bays,-halfWidth-19.35,11.25);
 
-  // The MIAMI paddock is a long 34-garage hospitality building, not a single
+  // The MIAMI paddock is a long 37-bay hospitality building, not a single
   // blank block. Door seams, vertical piers, balcony rails and rooftop plant
   // are instanced so the near-camera facade has detail without 300 draw calls.
   const bayBoundaries = Array.from({ length: bays.length + 1 },
@@ -321,7 +336,7 @@ export function addMiamiGridDetails(THREE, scene, curve, polyline, landmarks,
   const dividerStations = [];
   for (let s = entry + taper + 35; s < exit - taper - 35; s += 3.6) dividerStations.push(s);
   instanceBoxes('Pit-lane separation concrete blocks', [.72, 1.03, 3.58],
-    wall, dividerStations, -halfWidth - 1.85, .54);
+    wall, dividerStations, u => -roadHalfWidthAt(u)-1.85, .54);
 
   // Gantry, five start lights and illuminated scoring header.
   const gantry = new THREE.Group();
@@ -372,6 +387,8 @@ export function addMiamiGridDetails(THREE, scene, curve, polyline, landmarks,
 
   return {
     group, gridU, controlU,
+    garageBayCount:bays.length,
+    pitEntryStation:entry,pitExitStation:exit,
     gridPoint: frameAt(0).point,
     gridTangent: frameAt(0).forward,
     frameAt,

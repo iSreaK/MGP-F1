@@ -4,10 +4,12 @@ import { addSuzukaGridDetails } from './grid-details.js';
 import { addSuzukaTrackside } from './trackside-details.js';
 import { prepareSuzukaCurve } from './geometry-smoothing.js';
 import { CROSSOVER } from './track-data.js';
+import { SUZUKA_SAFETY_AREAS } from './track-sections.js';
 
 
 // The FIA map fixes the plan-view centreline and corner order. The elevation
-// profile models Suzuka's climb to T1; widths and runoff depths are estimated.
+// profile models Suzuka's low first sector and higher Spoon hills; widths and
+// runoff depths remain estimates checked against the official course guide.
 const SAMPLE_COUNT = 3308;
 
 function textureFromPixels(THREE, size, paint) {
@@ -83,11 +85,16 @@ function asphaltTexture(THREE) {
   const random = seededRandom(2075);
   return textureFromPixels(THREE, 384, (ctx, size) => {
     const pixels = ctx.createImageData(size, size);
-    const patches = Float32Array.from({ length: 13 * 13 }, () => random() - .5);
+    const patches = Float32Array.from({ length: 12 * 12 }, () => random() - .5);
     for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
       const ix = Math.min(11, Math.floor(x / size * 12));
       const iy = Math.min(11, Math.floor(y / size * 12));
-      const value = 79 + patches[iy * 13 + ix] * 11 + (random() - .5) * 25;
+      // Interpolate a periodic noise field: hard cells looked like paving
+      // tiles when flying above what should be continuous racing asphalt.
+      const fx=smoothstep(x/size*12-ix),fy=smoothstep(y/size*12-iy);
+      const h=(dx,dy)=>patches[((iy+dy)%12)*12+(ix+dx)%12];
+      const shade=(h(0,0)*(1-fx)+h(1,0)*fx)*(1-fy)+(h(0,1)*(1-fx)+h(1,1)*fx)*fy;
+      const value = 79 + shade * 8 + (random() - .5) * 25;
       const index = (y * size + x) * 4;
       pixels.data[index] = value * .96;
       pixels.data[index + 1] = value;
@@ -110,6 +117,18 @@ function curbTexture(THREE) {
     for (let y = 0; y < size; y += 32) ctx.fillRect(0, y, size, 16);
     ctx.fillStyle = 'rgba(25,30,29,.12)';
     for (let y = 0; y < size; y += 16) ctx.fillRect(0, y, size, 1);
+  });
+}
+
+function gravelTexture(THREE){
+  const random=seededRandom(196203);
+  return textureFromPixels(THREE,384,(ctx,size)=>{
+    const data=ctx.createImageData(size,size);
+    for(let i=0;i<size*size;i++){
+      const value=195+random()*55;
+      data.data[i*4]=value;data.data[i*4+1]=value;data.data[i*4+2]=value-3;data.data[i*4+3]=255;
+    }
+    ctx.putImageData(data,0,0);
   });
 }
 
@@ -148,13 +167,21 @@ function createRibbon(THREE, scene, name, frames, distances, from, to, material,
     const v0 = distances[i] / repeatMetres;
     const v1 = (distances[i] + a.point.distanceTo(b.point)) / repeatMetres;
     uvs.push(0, v0, 1, v0, 0, v1, 1, v1);
-    indices.push(first, first + 2, first + 1, first + 1, first + 2, first + 3);
+    // Offset ribbons can fold inside the hairpin/chicane when their lateral
+    // extent exceeds the local radius. Reject any degenerate/folded triangle
+    // as a final guard; the adaptive offsets below prevent this in normal use.
+    for(const tri of [[first,first+2,first+1],[first+1,first+2,first+3]]){
+      const [ia,ib,ic]=tri.map(v=>v*3);
+      const areaY=(positions[ib+2]-positions[ia+2])*(positions[ic]-positions[ia])-(positions[ib]-positions[ia])*(positions[ic+2]-positions[ia+2]);
+      if(areaY>1e-7)indices.push(...tri);
+    }
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
+  geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = name;
@@ -184,10 +211,11 @@ function terrainHeightSampler(terrain) {
   const rows = points.count / columns;
   const x0 = points.getX(0), stepX = points.getX(1) - x0;
   const stepZ = points.getZ(columns) - z0;
+  const outsideY=points.getY(0)-.025;
   return (x, z, fallback) => {
     const ux = (x - x0) / stepX, uz = (z - z0) / stepZ;
     if (ux < 0 || ux > columns - 1 || uz < 0 || uz > rows - 1)
-      return fallback;
+      return outsideY;
     const ix = Math.min(columns - 2, Math.floor(ux));
     const iz = Math.min(rows - 2, Math.floor(uz));
     const tx = ux - ix, tz = uz - iz;
@@ -232,7 +260,7 @@ function addRollingTerrain(THREE, scene, samples) {
   }
   const distance=Math.sqrt(best),fade=1-smoothstep((distance-20)/170);
   const ridge=Math.sin(x/230)*Math.cos(z/310)*2;
-  const sculptedY=(base+ridge)*(1-fade)+(height-1.3-Math.min(4,Math.max(0,distance-15)*.025))*fade;
+  const sculptedY=(base+ridge)*(1-fade)+(height-.45-Math.min(4,Math.max(0,distance-15)*.025))*fade;
   const edgeDistance=Math.min(x-box.min.x,box.max.x-x,z-box.min.z,box.max.z-z);
   const edgeBlend=smoothstep(edgeDistance/160);
   const y=farY+.025+(sculptedY-farY-.025)*edgeBlend;
@@ -278,9 +306,9 @@ export function createSuzukaWorld(THREE, scene) {
   const white = new THREE.MeshBasicMaterial({ color: 0xe9e8e2, side: THREE.DoubleSide });
   const curb = new THREE.MeshStandardMaterial({ map: curbTexture(THREE), color: 0xffffff,
     roughness: .87, side: THREE.DoubleSide });
-  const blueRunoff = new THREE.MeshStandardMaterial({ color: 0x6a9870, roughness: .97,
+  const gravel = new THREE.MeshStandardMaterial({ color: 0xc6b494, map:gravelTexture(THREE),roughness: 1,
     side: THREE.DoubleSide });
-  const redRunoff = new THREE.MeshStandardMaterial({ color: 0xe5e0cb, roughness: .97,
+  const escapeAsphalt = new THREE.MeshStandardMaterial({ color: 0x4f6960, roughness: .97,
     side: THREE.DoubleSide });
   const overviewAccent = new THREE.MeshBasicMaterial({ color: 0x3f6986, transparent: true,
     opacity: 0, depthWrite: false, side: THREE.DoubleSide });
@@ -289,22 +317,38 @@ export function createSuzukaWorld(THREE, scene) {
   // the catch fence. The old 11 m asphalt shoulder on both sides read as one
   // enormous grey slab, especially from the T1 approach camera.
   const bridgeSpan = u => Math.abs(u * 5807 - CROSSOVER.upperStation) < 65;
+  const curvatureAt=u=>{
+    const a=curve.getTangentAt((u-3/5807+1)%1).setY(0).normalize();
+    const b=curve.getTangentAt((u+3/5807)%1).setY(0).normalize();
+    return Math.atan2(a.x*b.z-a.z*b.x,a.dot(b))/6;
+  };
+  const safeLateral=(u,offset)=>{
+    const k=curvatureAt(u);
+    if(offset*k<0&&Math.abs(k)>.0001)return Math.sign(offset)*Math.min(Math.abs(offset),Math.max(half+.12,.78/Math.abs(k)));
+    return offset;
+  };
+  const shoulderWidth=u=>bridgeSpan(u)?1.3:.9;
   const vergeHeight = (frame, offset) => {
     const x = frame.point.x + frame.across.x * offset;
     const z = frame.point.z + frame.across.z * offset;
     const ground = terrainHeightAt(x, z, frame.point.y - 1.08);
-    const blend = smoothstep((Math.abs(offset) - half - 4.6) / 6.4);
-    const y = (frame.point.y - .16) * (1 - blend)
+    const blend = smoothstep((Math.abs(offset) - half - .9) / 9.1);
+    const y = (frame.point.y - .025) * (1 - blend)
       + (ground + .045) * blend;
     return y - frame.point.y;
   };
   createRibbon(THREE, scene, 'Suzuka paved shoulder', frames, distances,
-    u => -half - (bridgeSpan(u) ? 1.3 : 4.6), u => half + (bridgeSpan(u) ? 1.3 : 4.6), shoulder, { height: -.16, repeatMetres: 18 });
+    u => safeLateral(u,-half-shoulderWidth(u)), u => safeLateral(u,half+shoulderWidth(u)), shoulder, { height: -.025, repeatMetres: 18 });
+  const pitEntryU=sourceFractions[LANDMARKS.pitStraight.entryIndex],pitExitU=sourceFractions[LANDMARKS.pitStraight.exitIndex];
+  const pitSpan=(pitExitU-pitEntryU+1)%1;
+  createRibbon(THREE,scene,'Suzuka paved pit divider island',frames,distances,
+    -half-2.3,-half-.9,shoulder,{height:-.025,repeatMetres:18,
+      include:u=>{const distance=((u-pitEntryU+1)%1)*5807;return distance>65&&distance<pitSpan*5807-65;}});
   for (const [name, side] of [['left', -1], ['right', 1]]) {
-    for (const [index, a, b] of [[1, 4.6, 7.8], [2, 7.8, 11]]) {
+    for (const [index, a, b] of [[1, .9, 4.5], [2, 4.5, 10]]) {
       createRibbon(THREE, scene, `Suzuka ${name} mown safety verge ${index}`,
-        frames, distances, side < 0 ? -(half + b) : half + a,
-        side < 0 ? -(half + a) : half + b,
+        frames, distances, u=>safeLateral(u,side < 0 ? -(half + b) : half + a),
+        u=>safeLateral(u,side < 0 ? -(half + a) : half + b),
         grassVerge,
         { height: vergeHeight, repeatMetres: 18, include: u => !bridgeSpan(u) });
     }
@@ -330,34 +374,52 @@ export function createSuzukaWorld(THREE, scene) {
     const after = curve.getTangentAt((u + .006) % 1).setY(0).normalize();
     const clockwise = before.x * after.z - before.z * after.x < 0;
     const side = clockwise ? 1 : -1;
-    const include = t => Math.abs(wrappedDelta(t, u)) * TRACK_LENGTH_METERS < (corner === 1 ? 85 : 46);
+    const span=corner>=3&&corner<=6?38:corner===7?74:corner===1?85:46;
+    const include = t => Math.abs(wrappedDelta(t, u)) * TRACK_LENGTH_METERS < span&&!bridgeSpan(t);
     const outside = -side;
     const orderedOffsets = (sign, near, far) => {
       const at = distance => t => sign * (roadHalfWidthAt(t) + distance);
       return sign < 0 ? [at(far), at(near)] : [at(near), at(far)];
     };
-    const [runoffFrom, runoffTo] = orderedOffsets(outside, .75,
-      corner === 1 || corner === 12 ? 35 : 19);
-    createRibbon(THREE, scene, `Suzuka turn ${corner} paved runoff`, frames, distances,
-      runoffFrom, runoffTo,
-      blueRunoff, { include, height: -.037 });
-    const [stripeFrom, stripeTo] = orderedOffsets(outside,
-      corner === 1 || corner === 12 ? 22 : 12,
-      corner === 1 || corner === 12 ? 25 : 14);
-    createRibbon(THREE, scene, `Suzuka turn ${corner} red runoff stripe`, frames, distances,
-      stripeFrom, stripeTo,
-      redRunoff, { include, height: -.023 });
     const [kerbFrom, kerbTo] = orderedOffsets(side, .025, 1.05);
     createRibbon(THREE, scene, `Turn ${corner} striped inside kerb`, frames, distances,
-      kerbFrom, kerbTo, curb,
-      { include, height: .027, repeatMetres: 3.2 });
+      t=>safeLateral(t,kerbFrom(t)),t=>safeLateral(t,kerbTo(t)),curb,
+      { include, height: .045, repeatMetres: 3.2 });
+    // Distinct exit kerbs make the Esses and Spoon readable close to the car.
+    if([2,4,6,9,14,17].includes(corner)){
+      const [from,to]=orderedOffsets(outside,.025,.92);
+      createRibbon(THREE,scene,`Suzuka T${corner} red white exit kerb`,frames,distances,
+       t=>safeLateral(t,from(t)),t=>safeLateral(t,to(t)),curb,
+       {include:t=>{const d=wrappedDelta(t,u)*5807;return d>10&&d<82&&!bridgeSpan(t);},height:.042,repeatMetres:3.2});
+    }
+  }
+
+  // Suzuka is predominantly grass/gravel. The previous generic coloured
+  // apron at every bend both hid the Esses and folded over the chicane.
+  for(const area of SUZUKA_SAFETY_AREAS){
+    const u=sourceFractions[turns[`T${area.turn}`].index];
+    const k=curvatureAt(u),outside=k>0?1:-1;
+    const envelope=t=>smoothstep(1-Math.abs(wrappedDelta(t,u))*5807/area.span);
+    const near=t=>outside*(half+area.near);
+    const far=t=>outside*(half+area.near+(area.far-area.near)*envelope(t));
+    const include=t=>{
+      const d=Math.abs(wrappedDelta(t,u))*5807;if(d>=area.span||bridgeSpan(t))return false;
+      return !SUZUKA_SAFETY_AREAS.some(other=>other!==area&&other.kind===area.kind&&Math.abs(wrappedDelta(t,sourceFractions[turns[`T${other.turn}`].index]))*5807<d);
+    };
+    createRibbon(THREE,scene,`Suzuka T${area.turn} ${area.kind} safety bed`,frames,distances,
+      outside<0?far:near,outside<0?near:far,area.kind==='gravel'?gravel:escapeAsphalt,
+      {include,height:(f,offset)=>{
+        const x=f.point.x+f.across.x*offset,z=f.point.z+f.across.z*offset;
+        const ground=terrainHeightAt(x,z,f.point.y-.45),mix=smoothstep((Math.abs(offset)-half-2)/(area.far-2));
+        return -.035*(1-mix)+(ground+.035-f.point.y)*mix;
+      },repeatMetres:8});
   }
 
   const grid = addSuzukaGridDetails(THREE, scene, curve, sourcePoints, LANDMARKS, 0, half);
   const trackside = addSuzukaTrackside(THREE, scene, curve, frames, LANDMARKS,
-    { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: -1 });
+    { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: -1, terrainHeightAt });
   const environment = addSuzukaEnvironment(THREE, scene, curve, frames, LANDMARKS,
-    { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: -1 });
+    { trackY: 0, halfWidth: half, gridU: grid.gridU, sourceFractions, pitSide: -1, terrainHeightAt });
   const bounds = new THREE.Box3().setFromPoints(samples).expandByScalar(180);
   const trackHeightAt = (u, x, z) => {
     const wrapped = ((u % 1) + 1) % 1;
@@ -371,6 +433,6 @@ export function createSuzukaWorld(THREE, scene) {
     curve, samples, trackHeightAt, bounds,
     gridU: grid.gridU, gridPoint: grid.gridPoint, gridTangent: grid.gridTangent,
     trackMaterial: asphalt, overviewAccent,
-    environment, trackside, terrainHeightAt,
+    environment, trackside, terrainHeightAt,grid,frames,sourceFractions,
   };
 }
