@@ -1,0 +1,672 @@
+{
+  "source": "https://api.openstreetmap.org/api/0.6/map?bbox=7.426,43.737,7.432,43.741",
+  "attribution": "© OpenStreetMap contributors, ODbL 1.0",
+  "features": [
+    {
+      "type": "node",
+      "id": "272637923",
+      "tags": {
+        "bus": "yes",
+        "name": "Place du Casino",
+        "public_transport": "stop_position",
+        "ref:STTM": "5",
+        "source": "BDOrtho IGN (2025-11-17)",
+        "tourist_bus": "yes"
+      },
+      "coordinates": [
+        [
+          7.4275148,
+          43.7399287
+        ]
+      ]
+    },
+    {
+      "type": "node",
+      "id": "1737326309",
+      "tags": {
+        "bus": "yes",
+        "name": "Terrasses du Casino",
+        "public_transport": "stop_position"
+      },
+      "coordinates": [
+        [
+          7.4266199,
+          43.7379248
+        ]
+      ]
+    },
+    {
+      "type": "node",
+      "id": "1876870084",
+      "tags": {
+        "access": "yes",
+        "addr:country": "MC",
+        "amenity": "parking",
+        "capacity:disabled": "yes",
+        "fee": "yes",
+        "layer": "-1",
+        "name": "Parking du Casino",
+        "parking": "underground"
+      },
+      "coordinates": [
+        [
+          7.4258667,
+          43.739942
+        ]
+      ]
+    },
+    {
+      "type": "node",
+      "id": "2189614146",
+      "tags": {
+        "bench": "no",
+        "bin": "no",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "lit": "yes",
+        "local_ref": "Place du Casino",
+        "name": "Place du Casino",
+        "public_transport": "platform",
+        "shelter": "no",
+        "tactile_paving": "no",
+        "wheelchair": "no"
+      },
+      "coordinates": [
+        [
+          7.4279149,
+          43.7402663
+        ]
+      ]
+    },
+    {
+      "type": "node",
+      "id": "2189614153",
+      "tags": {
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "bus_stop",
+        "lit": "yes",
+        "name": "Place du Casino",
+        "passenger_information_display": "yes",
+        "public_transport": "platform",
+        "ref:STTM": "5",
+        "shelter": "yes",
+        "source": "BDOrtho IGN (2025-11-17)",
+        "tactile_paving": "no",
+        "tourist_bus": "yes",
+        "wheelchair": "yes"
+      },
+      "coordinates": [
+        [
+          7.4274534,
+          43.7399613
+        ]
+      ]
+    },
+    {
+      "type": "node",
+      "id": "4413997053",
+      "tags": {
+        "addr:country": "MC",
+        "addr:street": "Place du Casino",
+        "amenity": "restaurant",
+        "check_date": "2024-10-10",
+        "cuisine": "french",
+        "description": "3 Michelin stars. A la carte from €200 (not including drinks). Set lunch for €180/person.",
+        "email": "adhp@sbm.mc",
+        "level": "0",
+        "name": "Le Louis XV - Alain Ducasse à l'Hôtel de Paris",
+        "opening_hours": "Sa,Su 12:00-13:45, Th-Mo 19:30-21:45; Tu,We off",
+        "operator": "Alain Ducasse",
+        "operator:wikidata": "Q187901",
+        "phone": "+377 98 06 88 64",
+        "stars": "3",
+        "start_date": "1987",
+        "tripadvisor": "691518",
+        "website": "https://www.montecarlosbm.com/en/restaurant-monaco/le-louis-xv-alain-ducasse-hotel-de-paris",
+        "wikidata": "Q6507158",
+        "wikipedia": "en:Le Louis XV (restaurant)"
+      },
+      "coordinates": [
+        [
+          7.4273334,
+          43.7391072
+        ]
+      ]
+    },
+    {
+      "type": "node",
+      "id": "4416197079",
+      "tags": {
+        "addr:city": "Monaco",
+        "addr:country": "MC",
+        "addr:postcode": "98000",
+        "addr:street": "Place du Casino",
+        "amenity": "casino",
+        "email": "vip@montecarlocasinos.com",
+        "name": "Casino de Monte Carlo",
+        "name:cs": "Kasino Monte Carlo",
+        "name:de": "Casino Monte Carlo",
+        "name:en": "Monte-Carlo Casino and Opera House",
+        "name:es": "Casino de Monte Carlo",
+        "name:it": "Casinò di Monte Carlo",
+        "name:ko": "몬테 카를로 카지노",
+        "name:pt": "Casino de Monte Carlo",
+        "name:zh": "蒙特卡洛大赌场",
+        "name:zh-Hans": "蒙特卡洛大赌场",
+        "name:zh-Hant": "蒙特卡洛大賭場",
+        "opening_hours": "14:00-04:00",
+        "operator": "Société des bains de mer de Monaco",
+        "operator:short": "SBM",
+        "operator:wikidata": "Q1162190",
+        "phone": "+377 98 06 21 21",
+        "tourism": "attraction",
+        "website": "https://www.casinomontecarlo.com/",
+        "wheelchair": "limited",
+        "wikidata": "Q1779905",
+        "wikimedia_commons": "Category:Casino de Monte Carlo",
+        "wikipedia": "fr:Casino de Monte-Carlo"
+      },
+      "coordinates": [
+        [
+          7.428023,
+          43.7391605
+        ]
+      ]
+    },
+    {
+      "type": "node",
+      "id": "4938969808",
+      "tags": {
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "highway": "platform",
+        "lit": "yes",
+        "name": "Terrasses du Casino",
+        "public_transport": "platform",
+        "shelter": "yes"
+      },
+      "coordinates": [
+        [
+          7.426674,
+          43.7378463
+        ]
+      ]
+    },
+    {
+      "type": "node",
+      "id": "6418400802",
+      "tags": {
+        "direction": "310",
+        "historic": "memorial",
+        "material": "stone",
+        "memorial": "plaque",
+        "name": "Fairmont Hairpin",
+        "tourism": "attraction"
+      },
+      "coordinates": [
+        [
+          7.4297996,
+          43.740206
+        ]
+      ]
+    },
+    {
+      "type": "node",
+      "id": "6485591477",
+      "tags": {
+        "bus": "yes",
+        "name": "Place du Casino",
+        "public_transport": "stop_position"
+      },
+      "coordinates": [
+        [
+          7.4278392,
+          43.7402522
+        ]
+      ]
+    },
+    {
+      "type": "node",
+      "id": "9404246799",
+      "tags": {
+        "bus": "yes",
+        "highway": "bus_stop",
+        "name": "Monte-Carlo (Casino)",
+        "public_transport": "platform",
+        "shelter": "yes"
+      },
+      "coordinates": [
+        [
+          7.4260504,
+          43.740991
+        ]
+      ]
+    },
+    {
+      "type": "node",
+      "id": "9944534420",
+      "tags": {
+        "brand": "Fairmont",
+        "brand:wikidata": "Q1393345",
+        "email": "montecarlo@fairmont.com",
+        "name": "Fairmont",
+        "phone": "+377 93 50 65 00",
+        "stars": "4",
+        "tourism": "hotel",
+        "tripadvisor": "230423",
+        "website": "https://www.fairmont.com/monte-carlo/",
+        "wikidata": "Q18216800",
+        "wikimedia_commons": "Category:Hotel Fairmont Monte Carlo, Monaco",
+        "wikipedia": "en:Fairmont Monte Carlo"
+      },
+      "coordinates": [
+        [
+          7.4299421,
+          43.7399902
+        ]
+      ]
+    },
+    {
+      "type": "node",
+      "id": "11339077004",
+      "tags": {
+        "addr:city": "Monaco",
+        "addr:postcode": "98000",
+        "addr:street": "Place du Casino",
+        "email": "resort@sbm.mc",
+        "facebook": "https://www.facebook.com/HoteldeParisMonteCarlo/",
+        "internet_access": "wlan",
+        "internet_access:fee": "customers",
+        "name": "Hôtel de Paris",
+        "name:ko": "호텔 드 파리",
+        "operator": "Société des bains de mer de Monaco",
+        "operator:short": "SBM",
+        "operator:wikidata": "Q1162190",
+        "phone": "+377 98 06 30 00",
+        "rooms": "113",
+        "smoking": "outside",
+        "stars": "5",
+        "start_date": "1864",
+        "tourism": "hotel",
+        "tripadvisor": "196746",
+        "website": "https://www.hoteldeparismontecarlo.com/",
+        "wikidata": "Q1279896",
+        "wikimedia_commons": "Category:Hotel de Paris, Monaco",
+        "wikipedia": "fr:Hôtel de Paris Monte-Carlo"
+      },
+      "coordinates": [
+        [
+          7.4274682,
+          43.7390094
+        ]
+      ]
+    },
+    {
+      "type": "way",
+      "id": "4229658",
+      "tags": {
+        "highway": "service",
+        "lit": "yes",
+        "motor_vehicle": "destination",
+        "name": "Place du Casino",
+        "name:etymology": "Casino de Monte Carlo",
+        "name:etymology:wikidata": "Q1779905",
+        "name:etymology:wikipedia": "fr:Casino de Monte Carlo",
+        "oneway": "yes",
+        "sidewalk": "right",
+        "surface": "asphalt",
+        "wikidata": "Q95598843"
+      },
+      "coordinates": [
+        [
+          7.4271748,
+          43.7394883
+        ],
+        [
+          7.4271756,
+          43.7394592
+        ],
+        [
+          7.4271769,
+          43.7394456
+        ],
+        [
+          7.4271787,
+          43.7394313
+        ],
+        [
+          7.427185,
+          43.7394146
+        ],
+        [
+          7.4271921,
+          43.7393985
+        ],
+        [
+          7.4272017,
+          43.7393795
+        ],
+        [
+          7.4272177,
+          43.739352
+        ],
+        [
+          7.4272412,
+          43.7393211
+        ],
+        [
+          7.4272599,
+          43.739302
+        ],
+        [
+          7.4272737,
+          43.73929
+        ],
+        [
+          7.4273089,
+          43.7392609
+        ],
+        [
+          7.4273444,
+          43.7392366
+        ],
+        [
+          7.4274184,
+          43.739188
+        ]
+      ]
+    },
+    {
+      "type": "way",
+      "id": "503622703",
+      "tags": {
+        "area": "yes",
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "check_date:shelter": "2025-03-31",
+        "highway": "platform",
+        "lit": "yes",
+        "name": "Terrasses du Casino",
+        "public_transport": "platform",
+        "shelter": "yes",
+        "wheelchair": "yes"
+      },
+      "coordinates": [
+        [
+          7.426674,
+          43.7378463
+        ],
+        [
+          7.4266769,
+          43.7378311
+        ],
+        [
+          7.4264922,
+          43.7378125
+        ],
+        [
+          7.4264893,
+          43.7378278
+        ],
+        [
+          7.426674,
+          43.7378463
+        ]
+      ]
+    },
+    {
+      "type": "way",
+      "id": "503622707",
+      "tags": {
+        "bench": "yes",
+        "bin": "yes",
+        "bus": "yes",
+        "covered": "yes",
+        "highway": "platform",
+        "name": "Monte-Carlo (Casino)",
+        "public_transport": "platform",
+        "wheelchair": "yes"
+      },
+      "coordinates": [
+        [
+          7.4259631,
+          43.7408665
+        ],
+        [
+          7.4260079,
+          43.7409249
+        ],
+        [
+          7.4260932,
+          43.7410199
+        ],
+        [
+          7.426212,
+          43.741106
+        ]
+      ]
+    },
+    {
+      "type": "way",
+      "id": "572935479",
+      "tags": {
+        "addr:country": "MC",
+        "amenity": "fountain",
+        "barrier": "kerb",
+        "name": "Fontaine du Casino",
+        "name:etymology": "Casino de Monte Carlo",
+        "name:etymology:wikidata": "Q1779905",
+        "name:etymology:wikipedia": "fr:Casino de Monte Carlo",
+        "natural": "water",
+        "wikidata": "Q99302372"
+      },
+      "coordinates": [
+        [
+          7.4275081,
+          43.7394168
+        ],
+        [
+          7.4274967,
+          43.739407
+        ],
+        [
+          7.4274904,
+          43.739395
+        ],
+        [
+          7.4274898,
+          43.7393822
+        ],
+        [
+          7.4274951,
+          43.73937
+        ],
+        [
+          7.4275056,
+          43.7393596
+        ],
+        [
+          7.4275202,
+          43.7393523
+        ],
+        [
+          7.4275373,
+          43.7393489
+        ],
+        [
+          7.427555,
+          43.7393496
+        ],
+        [
+          7.4275714,
+          43.7393545
+        ],
+        [
+          7.4275846,
+          43.739363
+        ],
+        [
+          7.4275934,
+          43.7393742
+        ],
+        [
+          7.4275966,
+          43.7393866
+        ],
+        [
+          7.4275941,
+          43.7393991
+        ],
+        [
+          7.4275862,
+          43.7394103
+        ],
+        [
+          7.4275737,
+          43.7394191
+        ],
+        [
+          7.427558,
+          43.7394246
+        ],
+        [
+          7.4275407,
+          43.7394261
+        ],
+        [
+          7.4275233,
+          43.7394234
+        ],
+        [
+          7.4275081,
+          43.7394168
+        ]
+      ]
+    },
+    {
+      "type": "way",
+      "id": "808387085",
+      "tags": {
+        "highway": "pedestrian",
+        "lit": "yes",
+        "name": "Place du Casino",
+        "name:etymology": "Casino de Monte Carlo",
+        "name:etymology:wikidata": "Q1779905",
+        "name:etymology:wikipedia": "fr:Casino de Monte Carlo",
+        "smoothness": "excellent",
+        "surface": "paving_stones",
+        "wikidata": "Q95598843"
+      },
+      "coordinates": [
+        [
+          7.4277845,
+          43.7390206
+        ],
+        [
+          7.4277379,
+          43.7391243
+        ],
+        [
+          7.4275979,
+          43.7394242
+        ],
+        [
+          7.4274386,
+          43.7396934
+        ]
+      ]
+    },
+    {
+      "type": "way",
+      "id": "808387086",
+      "tags": {
+        "highway": "pedestrian",
+        "lit": "yes",
+        "name": "Place du Casino",
+        "name:etymology": "Casino de Monte Carlo",
+        "name:etymology:wikidata": "Q1779905",
+        "name:etymology:wikipedia": "fr:Casino de Monte Carlo",
+        "smoothness": "excellent",
+        "surface": "paving_stones",
+        "wikidata": "Q95598843"
+      },
+      "coordinates": [
+        [
+          7.4272808,
+          43.7394513
+        ],
+        [
+          7.4273495,
+          43.7394645
+        ],
+        [
+          7.4273873,
+          43.7394653
+        ],
+        [
+          7.4275979,
+          43.7394242
+        ],
+        [
+          7.4279571,
+          43.7393275
+        ],
+        [
+          7.4280938,
+          43.7393403
+        ]
+      ]
+    },
+    {
+      "type": "relation",
+      "id": "7360467",
+      "tags": {
+        "local_ref": "Terrasses du Casino",
+        "name": "Terrasses du Casino",
+        "network": "Autobus de Monaco",
+        "operator": "Compagnie des Autobus de Monaco",
+        "public_transport": "stop_area",
+        "public_transport:version": "2",
+        "type": "public_transport"
+      },
+      "coordinates": []
+    },
+    {
+      "type": "relation",
+      "id": "11144655",
+      "tags": {
+        "highway": "pedestrian",
+        "name": "Place du Casino",
+        "name:en": "Casino Square",
+        "name:etymology": "Casino de Monte Carlo",
+        "name:etymology:wikidata": "Q1779905",
+        "name:etymology:wikipedia": "fr:Casino de Monte Carlo",
+        "place": "square",
+        "smoothness": "excellent",
+        "surface": "paving_stones",
+        "type": "multipolygon",
+        "wikidata": "Q95598843"
+      },
+      "coordinates": []
+    },
+    {
+      "type": "relation",
+      "id": "19851154",
+      "tags": {
+        "local_ref": "Place du Casino",
+        "name": "Place du Casino",
+        "network": "Autobus de Monaco",
+        "operator": "Compagnie des Autobus de Monaco",
+        "public_transport": "stop_area",
+        "public_transport:version": "2",
+        "ref:STTM": "5",
+        "type": "public_transport"
+      },
+      "coordinates": []
+    }
+  ]
+}

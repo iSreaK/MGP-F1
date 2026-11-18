@@ -1,0 +1,23 @@
+[
+  {
+    "place_id": 68065183,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "way",
+    "osm_id": 155581853,
+    "lat": "47.2278696",
+    "lon": "14.7592202",
+    "category": "tourism",
+    "type": "hotel",
+    "place_rank": 30,
+    "importance": 0.0000537491416799728,
+    "addresstype": "tourism",
+    "name": "Landhotel Schönberghof & Gästehaus Enzinger",
+    "display_name": "Landhotel Schönberghof & Gästehaus Enzinger, 1, Höhenstraße, Schönberg, Katastralgemeinde Schönberg, Flatschach, Spielberg, Bezirk Murtal, Steiermark, 8724, Österreich",
+    "boundingbox": [
+      "47.2276176",
+      "47.2281277",
+      "14.7586244",
+      "14.7599763"
+    ]
+  }
+]

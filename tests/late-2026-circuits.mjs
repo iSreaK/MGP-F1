@@ -66,6 +66,6 @@ assert.doesNotMatch(sharedWorld, /mirrorTrackPointsX|scale\.x\s*=\s*-1/);
 
 const menu = await readFile(new URL('../dist/circuit-menu.js', import.meta.url), 'utf8');
 for (const spec of specs) assert.match(menu, new RegExp(`slug: '${spec.slug}'`));
-assert.match(menu, /slug: 'yas-marina', number: '15'/);
+assert.match(menu, /slug: 'yas-marina', number: '23'/);
 
 console.log('late-2026 circuits: source direction, scale, relief, roster and menu verified');
